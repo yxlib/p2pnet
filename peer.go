@@ -51,7 +51,7 @@ const (
 type HealtyCfg struct {
 	maxIdleTime int64
 	maxActIntv  int64
-	minSendIntv int64
+	maxSendFreq int
 	maxSendUnit int
 }
 
@@ -612,7 +612,7 @@ func (p *Peer) isBadPeer(cfg *HealtyCfg, startTime int64, now int64) bool {
 	defer p.lckSendInfo.Unlock()
 
 	actDuration := now - startTime
-	if (cfg.minSendIntv != 0) && (p.sendCnt > int(actDuration/cfg.minSendIntv)) {
+	if (cfg.maxSendFreq != 0) && (p.sendCnt > cfg.maxSendFreq*int(actDuration)) {
 		return true
 	}
 
