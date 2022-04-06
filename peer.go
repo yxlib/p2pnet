@@ -48,6 +48,13 @@ const (
 // 	ACT_MODE_PASSIVE
 // )
 
+type HealtyCfg struct {
+	maxIdleTime int64
+	maxActIntv  int64
+	minSendIntv int64
+	maxSendUnit int
+}
+
 func GetRemoteAddr(c net.Conn) string {
 	ipAddr := c.RemoteAddr().String()
 	subStrs := strings.Split(ipAddr, ":")
@@ -81,6 +88,14 @@ type Peer struct {
 	queReadPacks  chan *Pack
 	queWritePacks chan *Pack
 
+	connStartTime int64
+	bHasDataOpt   bool
+	actTime       int64
+	bStatSendInfo bool
+	lckSendInfo   *sync.Mutex
+	sendCnt       int
+	sendSize      int
+
 	ec *yx.ErrCatcher
 }
 
@@ -101,6 +116,13 @@ func NewPeer(peerType uint32, peerNo uint32, c net.Conn, maxReadQue uint32, maxW
 		evtExitRead:   yx.NewEvent(),
 		queReadPacks:  make(chan *Pack, maxReadQue),
 		queWritePacks: make(chan *Pack, maxWriteQue),
+		connStartTime: 0,
+		bHasDataOpt:   false,
+		actTime:       0,
+		bStatSendInfo: false,
+		lckSendInfo:   &sync.Mutex{},
+		sendCnt:       0,
+		sendSize:      0,
 		ec:            yx.NewErrCatcher("p2pnet.Peer"),
 	}
 }
@@ -139,6 +161,8 @@ func (p *Peer) GetIpAddr() string {
 }
 
 func (p *Peer) Open() {
+	p.connStartTime = time.Now().Unix()
+
 	go p.readLoop()
 	go p.writeLoop()
 }
@@ -186,6 +210,16 @@ func (p *Peer) PushWritePack(pack *Pack) error {
 	return nil
 }
 
+func (p *Peer) SetStatSendInfo() {
+	p.bStatSendInfo = true
+}
+
+func (p *Peer) CheckHealthy(cfg *HealtyCfg, startTime int64, now int64) {
+	if p.isBadPeer(cfg, startTime, now) {
+		p.Close()
+	}
+}
+
 func (p *Peer) readLoop() {
 	var pack *Pack = nil
 	var err error = nil
@@ -195,6 +229,8 @@ func (p *Peer) readLoop() {
 		if err != nil {
 			break
 		}
+
+		p.recordHealthyInfo(pack)
 
 		p.queReadPacks <- pack
 		p.mgr.OnPeerRead(p)
@@ -535,4 +571,56 @@ func (p *Peer) writeBytes(b []byte) error {
 	}
 
 	return err
+}
+
+func (p *Peer) recordHealthyInfo(pack *Pack) {
+	if !pack.Header.IsPongPack() {
+		p.actTime = time.Now().Unix()
+	}
+
+	if pack.Header.IsDataPack() {
+		p.bHasDataOpt = true
+	}
+
+	if !p.bStatSendInfo {
+		return
+	}
+
+	// send info
+	p.lckSendInfo.Lock()
+	defer p.lckSendInfo.Unlock()
+
+	p.sendCnt++
+
+	packLen := pack.Header.GetHeaderLen() + pack.Header.GetPayloadLen()
+	p.sendSize += packLen
+}
+
+func (p *Peer) isBadPeer(cfg *HealtyCfg, startTime int64, now int64) bool {
+	if now-p.connStartTime >= cfg.maxIdleTime {
+		if !p.bHasDataOpt {
+			return true
+		}
+	}
+
+	if now-p.actTime > cfg.maxActIntv {
+		return true
+	}
+
+	// send info
+	p.lckSendInfo.Lock()
+	defer p.lckSendInfo.Unlock()
+
+	actDuration := now - startTime
+	if (cfg.minSendIntv != 0) && (p.sendCnt > int(actDuration/cfg.minSendIntv)) {
+		return true
+	}
+
+	if (cfg.maxSendUnit != 0) && (p.sendSize > cfg.maxSendUnit*int(actDuration)) {
+		return true
+	}
+
+	p.sendCnt = 0
+	p.sendSize = 0
+	return false
 }
