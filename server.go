@@ -11,6 +11,7 @@ import (
 )
 
 type Server interface {
+	SetAcceptBindPeerType(bindPeerType uint32, minPeerNo uint64, maxPeerNo uint64)
 	Listen(network string, address string) error
 	Close() error
 }

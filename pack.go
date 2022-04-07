@@ -47,12 +47,12 @@ type PackHeaderOpr interface {
 	SetRegisterRespPack()
 	IsRegisterRespPack() bool
 
-	SetHasSrc()
+	SetHasSrc(bHasSrc bool)
 	HasSrc() bool
 	SetSrcPeer(peerType uint32, peerNo uint32)
 	GetSrcPeer() (peerType uint32, peerNo uint32)
 
-	SetHasDst()
+	SetHasDst(bHasDst bool)
 	HasDst() bool
 	SetDstPeer(peerType uint32, peerNo uint32)
 	GetDstPeer() (peerType uint32, peerNo uint32)
