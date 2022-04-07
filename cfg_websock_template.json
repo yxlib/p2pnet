@@ -1,6 +1,4 @@
 {
-    "peer_type" : 4,
-    "peer_no" : 1,
     "ip_conn_limit" : 500,
     "max_read_queue" : 10,
     "max_write_queue" : 10,

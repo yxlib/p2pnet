@@ -1,8 +1,6 @@
 package p2pnet
 
 type BaseConfig struct {
-	PeerType       uint32 `json:"peer_type"`
-	PeerNo         uint32 `json:"peer_no"`
 	IpConnCntLimit uint32 `json:"ip_conn_limit"`
 	MaxReadQue     uint32 `json:"max_read_queue"`
 	MaxWriteQue    uint32 `json:"max_write_queue"`
