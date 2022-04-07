@@ -83,6 +83,9 @@ type BasePeerMgr struct {
 	evtStop   *yx.Event
 	evtExit   *yx.Event
 
+	lckRunning *sync.Mutex
+	bRunning   bool
+
 	ec *yx.ErrCatcher
 }
 
@@ -99,6 +102,8 @@ func NewBasePeerMgr(peerType uint32, peerNo uint32) *BasePeerMgr {
 		listeners:      make([]P2pNetListener, 0),
 		evtStop:        yx.NewEvent(),
 		evtExit:        yx.NewEvent(),
+		lckRunning:     &sync.Mutex{},
+		bRunning:       false,
 		ec:             yx.NewErrCatcher("p2pnet.BasePeerMgr"),
 	}
 }
@@ -125,6 +130,14 @@ func (m *BasePeerMgr) RemoveListener(l P2pNetListener) {
 }
 
 func (m *BasePeerMgr) Start() {
+	m.lckRunning.Lock()
+	defer m.lckRunning.Unlock()
+
+	if m.bRunning {
+		return
+	}
+
+	m.bRunning = true
 	m.loop()
 }
 
@@ -133,6 +146,15 @@ func (m *BasePeerMgr) Stop() {
 	// 	p.serv.Close()
 	// 	p.evtExitAccept.Wait()
 	// }
+
+	m.lckRunning.Lock()
+	defer m.lckRunning.Unlock()
+
+	if !m.bRunning {
+		return
+	}
+
+	m.bRunning = false
 
 	m.evtStop.Send()
 	m.evtExit.Wait()
