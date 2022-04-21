@@ -56,12 +56,13 @@ type PackHeaderOpr interface {
 	HasDst() bool
 	SetDstPeer(peerType uint32, peerNo uint32)
 	GetDstPeer() (peerType uint32, peerNo uint32)
+
+	GetPayloadLen() int
 }
 
 type PackHeader interface {
 	PackHeaderSerialize
 	PackHeaderOpr
-	GetPayloadLen() int
 }
 
 type PackHeaderFactory interface {

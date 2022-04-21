@@ -42,16 +42,6 @@ func NewPackWrap(pack *Pack, directPeerType uint32, directPeerNo uint32) *PackWr
 }
 
 //========================
-//      P2pNetListener
-//========================
-type P2pNetListener interface {
-	OnP2pNetOpenPeer(m PeerMgr, peerType uint32, peerNo uint32)
-	OnP2pNetClosePeer(m PeerMgr, peerType uint32, peerNo uint32, ipAddr string)
-	OnP2pNetReadPack(m PeerMgr, pack *Pack, recvPeerType uint32, recvPeerNo uint32) bool
-	OnP2pNetError(m PeerMgr, peerType uint32, peerNo uint32, err error)
-}
-
-//========================
 //       PeerMgr
 //========================
 type PeerMgr interface {
