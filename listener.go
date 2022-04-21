@@ -13,6 +13,10 @@ type P2pNetListener interface {
 type BaseP2pNetListner struct {
 }
 
+func NewBaseP2pNetListner() *BaseP2pNetListner {
+	return &BaseP2pNetListner{}
+}
+
 func (n *BaseP2pNetListner) OnP2pNetOpenPeer(m PeerMgr, peerType uint32, peerNo uint32) {
 }
 
