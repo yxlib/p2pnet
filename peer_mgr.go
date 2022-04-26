@@ -120,31 +120,19 @@ func (m *BasePeerMgr) RemoveListener(l P2pNetListener) {
 }
 
 func (m *BasePeerMgr) Start() {
-	m.lckRunning.Lock()
-	defer m.lckRunning.Unlock()
-
-	if m.bRunning {
+	bUpdate := m.setRunning(true)
+	if !bUpdate {
 		return
 	}
 
-	m.bRunning = true
 	m.loop()
 }
 
 func (m *BasePeerMgr) Stop() {
-	// if p.serv != nil {
-	// 	p.serv.Close()
-	// 	p.evtExitAccept.Wait()
-	// }
-
-	m.lckRunning.Lock()
-	defer m.lckRunning.Unlock()
-
-	if !m.bRunning {
+	bUpdate := m.setRunning(false)
+	if !bUpdate {
 		return
 	}
-
-	m.bRunning = false
 
 	m.evtStop.Send()
 	m.evtExit.Wait()
@@ -256,6 +244,18 @@ func (m *BasePeerMgr) OnPeerRead(p *Peer) {
 //========================
 //       private
 //========================
+func (m *BasePeerMgr) setRunning(bRunning bool) (bUpdate bool) {
+	m.lckRunning.Lock()
+	defer m.lckRunning.Unlock()
+
+	if m.bRunning == bRunning {
+		return false
+	}
+
+	m.bRunning = bRunning
+	return true
+}
+
 func (m *BasePeerMgr) handleUnknownPeerRead(p *Peer) {
 	pack, err := p.PopReadPack()
 	if err != nil {
