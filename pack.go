@@ -89,7 +89,7 @@ func NewPack(h PackHeader) *Pack {
 func NewSingleFramePack(h PackHeader, payload []byte) *Pack {
 	p := NewPack(h)
 	p.AddFrame(payload)
-
+	p.UpdatePayloadLen()
 	return p
 }
 
@@ -103,8 +103,6 @@ func (p *Pack) AddFrame(frame []byte) error {
 	}
 
 	p.Payload = append(p.Payload, frame)
-	payloadLen := p.Header.GetPayloadLen()
-	p.Header.SetPayloadLen(payloadLen + len(frame))
 	return nil
 }
 
@@ -117,4 +115,13 @@ func (p *Pack) AddFrames(frames []PackFrame) error {
 	}
 
 	return nil
+}
+
+func (p *Pack) UpdatePayloadLen() {
+	payloadLen := 0
+	for _, frame := range p.Payload {
+		payloadLen += len(frame)
+	}
+
+	p.Header.SetPayloadLen(payloadLen)
 }
