@@ -58,6 +58,7 @@ type PackHeaderOpr interface {
 	GetDstPeer() (peerType uint32, peerNo uint32)
 
 	GetPayloadLen() int
+	SetPayloadLen(payloadLen int)
 }
 
 type PackHeader interface {
@@ -102,6 +103,8 @@ func (p *Pack) AddFrame(frame []byte) error {
 	}
 
 	p.Payload = append(p.Payload, frame)
+	payloadLen := p.Header.GetPayloadLen()
+	p.Header.SetPayloadLen(payloadLen + len(frame))
 	return nil
 }
 

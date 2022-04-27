@@ -355,6 +355,8 @@ func (p *Peer) handleHeaderData(pack *Pack, step int) (int, error) {
 
 	} else if step == PEER_READ_STEP_HEADER { // header
 		pack.Header.Unmarshal(data[:p.wantReadLen])
+		p.readBuff.Skip(uint32(p.wantReadLen))
+
 		payloadLen := pack.Header.GetPayloadLen()
 		if payloadLen > PACK_MAX_PAYLOAD {
 			return step, ErrPeerReadPackTooBig
@@ -369,7 +371,6 @@ func (p *Peer) handleHeaderData(pack *Pack, step int) (int, error) {
 			return PEER_READ_STEP_END, nil
 		}
 
-		p.readBuff.Skip(uint32(p.wantReadLen))
 		p.wantReadLen = payloadLen
 		return PEER_READ_STEP_DATA, nil
 	}
