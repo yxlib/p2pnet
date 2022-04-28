@@ -58,6 +58,7 @@ type PeerMgr interface {
 	SendByPeer(pack *Pack, nextPeerType uint32, nextPeerNo uint32) error
 	CloseRead(peerType uint32, peerNo uint32)
 	ClosePeer(peerType uint32, peerNo uint32)
+	ReusePack(pack *Pack, peerType uint32, peerNo uint32)
 }
 
 type BasePeerMgr struct {
