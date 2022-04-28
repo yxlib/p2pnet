@@ -67,9 +67,9 @@ type PackHeaderOpr interface {
 }
 
 type PackHeader interface {
-	yx.Reuseable
 	PackHeaderSerialize
 	PackHeaderOpr
+	Reset()
 }
 
 type PackHeaderFactory interface {
