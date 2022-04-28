@@ -25,7 +25,7 @@ type BaseServer struct {
 	bAcceptBindPeerType bool
 	bindPeerType        uint32
 	peerNoGenerator     *yx.IdGenerator
-	headerFactory       PackHeaderFactory
+	packPool            *PackPool
 	maxReadQue          uint32
 	maxWriteQue         uint32
 
@@ -40,7 +40,7 @@ func NewBaseServ(peerMgr PeerMgr, ipConnCntLimit uint32, headerFactory PackHeade
 		bAcceptBindPeerType: false,
 		bindPeerType:        0,
 		peerNoGenerator:     nil,
-		headerFactory:       headerFactory,
+		packPool:            NewPackPool(headerFactory),
 		maxReadQue:          maxReadQue,
 		maxWriteQue:         maxWriteQue,
 		ec:                  yx.NewErrCatcher("p2pnet.BaseServer"),
@@ -164,6 +164,6 @@ func (s *BaseServer) reduceIpConnCnt(ipAddr string) {
 
 func (s *BaseServer) openPeer(peerType uint32, peerNo uint32, c net.Conn, bUnknownPeer bool) {
 	p := NewPeer(peerType, peerNo, c, s.maxReadQue, s.maxWriteQue)
-	p.SetHeaderFactory(s.headerFactory)
+	p.SetPackPool(s.packPool)
 	s.peerMgr.AddPeer(p, bUnknownPeer, false)
 }

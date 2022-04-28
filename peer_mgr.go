@@ -19,6 +19,7 @@ var (
 )
 
 const (
+	PEER_MGR_MAX_BUFF_REUSE_CNT   = 1024
 	PEER_MGR_READ_WAIT_DURATION   = 5 * time.Millisecond
 	PEER_MGR_CHECK_CLOSE_INTERVAL = time.Second
 	PEER_MGR_MAX_PEER_NO          = 100000
@@ -62,6 +63,7 @@ type PeerMgr interface {
 type BasePeerMgr struct {
 	peerType       uint32
 	peerNo         uint32
+	buffPool       *yx.BuffPool
 	lckReadPeerIds *sync.Mutex
 	readPeerIdSet  map[uint32]bool
 	lckPeer        *sync.RWMutex
@@ -83,6 +85,7 @@ func NewBasePeerMgr(peerType uint32, peerNo uint32) *BasePeerMgr {
 	return &BasePeerMgr{
 		peerType:       peerType,
 		peerNo:         peerNo,
+		buffPool:       yx.NewBuffPool(PEER_MGR_MAX_BUFF_REUSE_CNT),
 		lckReadPeerIds: &sync.Mutex{},
 		readPeerIdSet:  make(map[uint32]bool),
 		lckPeer:        &sync.RWMutex{},
@@ -143,6 +146,7 @@ func (m *BasePeerMgr) Stop() {
 
 func (m *BasePeerMgr) AddPeer(peer *Peer, bUnknownPeer bool, bRegister bool) {
 	peer.SetMgr(m)
+	peer.SetBuffPool(m.buffPool)
 
 	if bUnknownPeer {
 		bSucc := m.addUnknownPeer(peer)
@@ -209,6 +213,13 @@ func (m *BasePeerMgr) ClosePeer(peerType uint32, peerNo uint32) {
 	peer, ok := m.getPeerImpl(peerType, peerNo)
 	if ok {
 		peer.Close()
+	}
+}
+
+func (m *BasePeerMgr) ReusePack(pack *Pack, peerType uint32, peerNo uint32) {
+	peer, ok := m.getPeerImpl(peerType, peerNo)
+	if ok {
+		peer.ReusePack(pack)
 	}
 }
 
@@ -396,9 +407,9 @@ func (m *BasePeerMgr) handleCtrlPack(pack *Pack, peer *Peer, bUnknownPeer bool) 
 
 	// TODO record act
 
-	factory := peer.GetHeaderFactory()
+	// factory := peer.GetHeaderFactory()
 	if pack.Header.IsPingPack() {
-		m.handlePingPack(peer, factory)
+		m.handlePingPack(peer)
 		return nil
 	}
 
@@ -407,7 +418,7 @@ func (m *BasePeerMgr) handleCtrlPack(pack *Pack, peer *Peer, bUnknownPeer bool) 
 			return ErrPeerMgrInvalidPack
 		}
 
-		m.handleRegReq(pack, peer, factory)
+		m.handleRegReq(pack, peer)
 		return nil
 	}
 
@@ -423,33 +434,30 @@ func (m *BasePeerMgr) handleCtrlPack(pack *Pack, peer *Peer, bUnknownPeer bool) 
 	return ErrPeerMgrInvalidPack
 }
 
-func (m *BasePeerMgr) handlePingPack(peer *Peer, factory PackHeaderFactory) {
-	header := factory.CreateHeader()
-	header.SetPongPack()
-	pongPack := NewPack(header)
+func (m *BasePeerMgr) handlePingPack(peer *Peer) {
+	pongPack := peer.CreatePack()
+	pongPack.Header.SetPongPack()
 	go peer.PushWritePack(pongPack)
 }
 
 func (m *BasePeerMgr) sendRegPack(peer *Peer) {
 	peerType := peer.GetPeerType()
 	peerNo := peer.GetPeerNo()
-	factory := peer.GetHeaderFactory()
 
-	header := factory.CreateHeader()
+	regPack := peer.CreatePack()
+	header := regPack.Header
 	header.SetRegisterReqPack()
 	header.SetSrcPeer(peerType, peerNo)
-	regPack := NewPack(header)
 	go peer.PushWritePack(regPack)
 }
 
-func (m *BasePeerMgr) handleRegReq(pack *Pack, peer *Peer, factory PackHeaderFactory) {
+func (m *BasePeerMgr) handleRegReq(pack *Pack, peer *Peer) {
 	srcPeerType, srcPeerNo := pack.Header.GetSrcPeer()
 	peer.SetPeerTypeAndNo(srcPeerType, srcPeerNo)
 	m.bindPeer(peer)
 
-	header := factory.CreateHeader()
-	header.SetRegisterRespPack()
-	respPack := NewPack(header)
+	respPack := peer.CreatePack()
+	respPack.Header.SetRegisterRespPack()
 	go peer.PushWritePack(respPack)
 }
 

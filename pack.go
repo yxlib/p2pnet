@@ -6,12 +6,14 @@ package p2pnet
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/yxlib/yx"
 )
 
 var (
-	ErrPackFrameIsNil = errors.New("frame is nil")
+	ErrPackFrameIsNil     = errors.New("frame is nil")
+	ErrPackFrameSizeWrong = errors.New("frame size is wrong")
 )
 
 const (
@@ -19,6 +21,9 @@ const (
 	PACK_MAX_PAYLOAD = (4 * 1024 * 8)
 )
 
+//========================
+//        PackHeader
+//========================
 type PackHeaderSerialize interface {
 	GetMarkLen() int
 	UnmarshalMark([]byte) error
@@ -62,6 +67,7 @@ type PackHeaderOpr interface {
 }
 
 type PackHeader interface {
+	yx.Reuseable
 	PackHeaderSerialize
 	PackHeaderOpr
 }
@@ -70,19 +76,24 @@ type PackHeaderFactory interface {
 	CreateHeader() PackHeader
 }
 
+//========================
+//         Pack
+//========================
 type PackFrame = []byte
 
 type Pack struct {
-	Header  PackHeader
-	Payload []PackFrame
-	ec      *yx.ErrCatcher
+	Header   PackHeader
+	Payload  []PackFrame
+	oriBuffs []PackFrame
+	ec       *yx.ErrCatcher
 }
 
 func NewPack(h PackHeader) *Pack {
 	return &Pack{
-		Header:  h,
-		Payload: make([]PackFrame, 0),
-		ec:      yx.NewErrCatcher("p2pnet.Pack"),
+		Header:   h,
+		Payload:  make([]PackFrame, 0),
+		oriBuffs: make([]PackFrame, 0),
+		ec:       yx.NewErrCatcher("p2pnet.Pack"),
 	}
 }
 
@@ -98,11 +109,25 @@ func NewSingleFramePack(h PackHeader, payload []byte) *Pack {
 // }
 
 func (p *Pack) AddFrame(frame []byte) error {
-	if nil == frame {
+	if len(frame) == 0 {
 		return p.ec.Throw("AddFrame", ErrPackFrameIsNil)
 	}
 
 	p.Payload = append(p.Payload, frame)
+	return nil
+}
+
+func (p *Pack) AddReuseFrame(oriBuff []byte, frameSize uint) error {
+	if len(oriBuff) == 0 || frameSize == 0 {
+		return p.ec.Throw("AddReuseFrame", ErrPackFrameIsNil)
+	}
+
+	if len(oriBuff) < int(frameSize) {
+		return p.ec.Throw("AddReuseFrame", ErrPackFrameSizeWrong)
+	}
+
+	p.oriBuffs = append(p.oriBuffs, oriBuff)
+	p.AddFrame(oriBuff[:frameSize])
 	return nil
 }
 
@@ -124,4 +149,44 @@ func (p *Pack) UpdatePayloadLen() {
 	}
 
 	p.Header.SetPayloadLen(payloadLen)
+}
+
+func (p *Pack) Reset() {
+	p.Header.Reset()
+	p.Payload = make([]PackFrame, 0)
+	p.oriBuffs = make([]PackFrame, 0)
+}
+
+//========================
+//         PackPool
+//========================
+type PackPool struct {
+	pool          *sync.Pool
+	headerFactory PackHeaderFactory
+}
+
+func NewPackPool(headerFactory PackHeaderFactory) *PackPool {
+	p := &PackPool{
+		pool:          &sync.Pool{},
+		headerFactory: headerFactory,
+	}
+
+	p.pool.New = p.newPack
+
+	return p
+}
+
+func (p *PackPool) Put(pack *Pack) {
+	pack.Reset()
+	p.pool.Put(pack)
+}
+
+func (p *PackPool) Get() *Pack {
+	obj := p.pool.Get()
+	return obj.(*Pack)
+}
+
+func (p *PackPool) newPack() interface{} {
+	h := p.headerFactory.CreateHeader()
+	return NewPack(h)
 }

@@ -79,8 +79,10 @@ type Peer struct {
 	bForceClose bool
 	lckClose    *sync.Mutex
 
-	mgr           PeerListener
-	headerFactory PackHeaderFactory
+	mgr      PeerListener
+	packPool *PackPool
+	buffPool *yx.BuffPool
+	// headerFactory PackHeaderFactory
 
 	wantReadLen   int
 	readBuff      *yx.SimpleBuffer
@@ -101,16 +103,18 @@ type Peer struct {
 
 func NewPeer(peerType uint32, peerNo uint32, c net.Conn, maxReadQue uint32, maxWriteQue uint32) *Peer {
 	return &Peer{
-		peerType:      peerType,
-		peerNo:        peerNo,
-		conn:          c,
-		ipAddr:        GetRemoteAddr(c),
-		bCloseRead:    false,
-		bExit:         false,
-		bForceClose:   false,
-		lckClose:      &sync.Mutex{},
-		mgr:           nil,
-		headerFactory: nil,
+		peerType:    peerType,
+		peerNo:      peerNo,
+		conn:        c,
+		ipAddr:      GetRemoteAddr(c),
+		bCloseRead:  false,
+		bExit:       false,
+		bForceClose: false,
+		lckClose:    &sync.Mutex{},
+		mgr:         nil,
+		packPool:    nil,
+		buffPool:    nil,
+		// headerFactory: nil,
 		wantReadLen:   0,
 		readBuff:      yx.NewSimpleBuffer(PEER_READ_BUFF_SIZE),
 		evtExitRead:   yx.NewEvent(),
@@ -131,13 +135,33 @@ func (p *Peer) SetMgr(mgr PeerListener) {
 	p.mgr = mgr
 }
 
-func (p *Peer) SetHeaderFactory(headerFactory PackHeaderFactory) {
-	p.headerFactory = headerFactory
+func (p *Peer) SetPackPool(pool *PackPool) {
+	p.packPool = pool
 }
 
-func (p *Peer) GetHeaderFactory() PackHeaderFactory {
-	return p.headerFactory
+func (p *Peer) CreatePack() *Pack {
+	return p.packPool.Get()
 }
+
+func (p *Peer) ReusePack(pack *Pack) {
+	for _, buff := range pack.oriBuffs {
+		p.buffPool.ReuseBuff(buff)
+	}
+
+	p.packPool.Put(pack)
+}
+
+func (p *Peer) SetBuffPool(pool *yx.BuffPool) {
+	p.buffPool = pool
+}
+
+// func (p *Peer) SetHeaderFactory(headerFactory PackHeaderFactory) {
+// 	p.headerFactory = headerFactory
+// }
+
+// func (p *Peer) GetHeaderFactory() PackHeaderFactory {
+// 	return p.headerFactory
+// }
 
 func (p *Peer) SetPeerTypeAndNo(peerType uint32, peerNo uint32) {
 	p.peerType = peerType
@@ -258,6 +282,8 @@ func (p *Peer) writeLoop() {
 		if err != nil {
 			break
 		}
+
+		p.ReusePack(pack)
 	}
 
 	if err != nil {
@@ -274,8 +300,9 @@ func (p *Peer) writeLoop() {
 
 func (p *Peer) readPack() (*Pack, error) {
 	var err error = nil
-	header := p.headerFactory.CreateHeader()
-	pack := NewPack(header)
+	// header := p.headerFactory.CreateHeader()
+	// pack := NewPack(header)
+	pack := p.CreatePack()
 	step := PEER_READ_STEP_MARK
 	p.wantReadLen = pack.Header.GetMarkLen()
 
@@ -385,12 +412,15 @@ func (p *Peer) readPackData(pack *Pack) (int, error) {
 	}
 
 	if p.isSingleFramePack(pack) { // single frame
-		payloadBuff, err := p.readPackFrame(payloadLen)
+		oriBuff := p.buffPool.CreateBuff(uint16(payloadLen))
+		payloadBuff := oriBuff[:payloadLen]
+		err := p.readPackFrame(payloadBuff)
 		if err != nil {
 			return PEER_READ_STEP_DATA, err
 		}
 
-		pack.AddFrame(payloadBuff)
+		// pack.AddFrame(payloadBuff)
+		pack.AddReuseFrame(oriBuff, uint(payloadLen))
 		return PEER_READ_STEP_END, nil
 
 	} else { // multi frames
@@ -417,7 +447,8 @@ func (p *Peer) readPackFrames(payloadLen int) ([]PackFrame, error) {
 			frameSize = PACK_MAX_FRAME
 		}
 
-		f, err = p.readPackFrame(frameSize)
+		f = make([]byte, frameSize)
+		err = p.readPackFrame(f)
 		if err != nil {
 			break
 		}
@@ -436,21 +467,22 @@ func (p *Peer) readPackFrames(payloadLen int) ([]PackFrame, error) {
 	return frames, nil
 }
 
-func (p *Peer) readPackFrame(frameSize int) (PackFrame, error) {
+func (p *Peer) readPackFrame(frameBuff []byte) error {
 	var err error = nil
+	frameSize := len(frameBuff)
 	totalSize := int(0)
 	readSize := int(0)
-	frameBuff := make(PackFrame, frameSize)
+	// frameBuff := make(PackFrame, frameSize)
 
 	// read from buffer first
 	if p.readBuff.GetDataLen() > 0 {
 		readSize, err = p.readBuff.Read(frameBuff)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		if readSize == frameSize {
-			return frameBuff, nil
+			return nil
 		}
 
 		totalSize += readSize
@@ -471,11 +503,7 @@ func (p *Peer) readPackFrame(frameSize int) (PackFrame, error) {
 		}
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
-	return frameBuff, nil
+	return err
 }
 
 func (p *Peer) isSingleFramePack(pack *Pack) bool {
