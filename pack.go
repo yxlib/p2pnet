@@ -72,6 +72,124 @@ type PackHeader interface {
 	Reset()
 }
 
+//========================
+//       PackHeader
+//========================
+type BasePackHeader struct {
+}
+
+func NewBasePackHeader() *BasePackHeader {
+	return &BasePackHeader{}
+}
+
+func (h *BasePackHeader) Reset() {
+}
+
+func (h *BasePackHeader) GetMarkLen() int {
+	return 0
+}
+
+func (h *BasePackHeader) UnmarshalMark(b []byte) error {
+	return nil
+}
+
+func (h *BasePackHeader) GetHeaderLen() int {
+	return 0
+}
+
+func (h *BasePackHeader) Unmarshal(buff []byte) error {
+	return nil
+}
+
+func (h *BasePackHeader) Marshal() ([]byte, error) {
+	return nil, nil
+}
+
+func (h *BasePackHeader) VerifyMark() bool {
+	return true
+}
+
+func (h *BasePackHeader) SetBinDataPack() {
+}
+
+func (h *BasePackHeader) SetTextDataPack() {
+}
+
+func (h *BasePackHeader) IsDataPack() bool {
+	return true
+}
+
+func (h *BasePackHeader) SetPingPack() {
+}
+
+func (h *BasePackHeader) IsPingPack() bool {
+	return false
+}
+
+func (h *BasePackHeader) SetPongPack() {
+}
+
+func (h *BasePackHeader) IsPongPack() bool {
+	return false
+}
+
+func (h *BasePackHeader) SetRegisterReqPack() {
+}
+
+func (h *BasePackHeader) IsRegisterReqPack() bool {
+	return false
+}
+
+func (h *BasePackHeader) SetRegisterRespPack() {
+
+}
+
+func (h *BasePackHeader) IsRegisterRespPack() bool {
+	return false
+}
+
+func (h *BasePackHeader) SetHasSrc(bHasSrc bool) {
+}
+
+func (h *BasePackHeader) HasSrc() bool {
+	return false
+}
+
+func (h *BasePackHeader) SetSrcPeer(peerType uint32, peerNo uint32) {
+}
+
+func (h *BasePackHeader) GetSrcPeer() (peerType uint32, peerNo uint32) {
+	return 0, 0
+}
+
+func (h *BasePackHeader) SetHasDst(bHasDst bool) {
+}
+
+func (h *BasePackHeader) HasDst() bool {
+	return false
+}
+
+func (h *BasePackHeader) SetDstPeer(peerType uint32, peerNo uint32) {
+}
+
+func (h *BasePackHeader) GetDstPeer() (peerType uint32, peerNo uint32) {
+	return 0, 0
+}
+
+func (h *BasePackHeader) SetHasPayloadLen(bHasPayloadLen bool) {
+}
+
+func (h *BasePackHeader) HasPayloadLen() bool {
+	return false
+}
+
+func (h *BasePackHeader) GetPayloadLen() int {
+	return 0
+}
+
+func (h *BasePackHeader) SetPayloadLen(payloadLen int) {
+}
+
 type PackHeaderFactory interface {
 	CreateHeader() PackHeader
 }
