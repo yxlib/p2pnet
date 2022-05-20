@@ -84,6 +84,7 @@ type Peer struct {
 	buffPool *yx.BuffPool
 	// headerFactory PackHeaderFactory
 
+	maxPayload    int
 	wantReadLen   int
 	readBuff      *yx.SimpleBuffer
 	evtExitRead   *yx.Event
@@ -115,6 +116,7 @@ func NewPeer(peerType uint32, peerNo uint32, c net.Conn, maxReadQue uint32, maxW
 		packPool:    nil,
 		buffPool:    nil,
 		// headerFactory: nil,
+		maxPayload:    PACK_MAX_PAYLOAD,
 		wantReadLen:   0,
 		readBuff:      yx.NewSimpleBuffer(PEER_READ_BUFF_SIZE),
 		evtExitRead:   yx.NewEvent(),
@@ -182,6 +184,10 @@ func (p *Peer) GetPeerNo() uint32 {
 
 func (p *Peer) GetIpAddr() string {
 	return p.ipAddr
+}
+
+func (p *Peer) SetMaxPayload(maxPayload int) {
+	p.maxPayload = maxPayload
 }
 
 func (p *Peer) Open() {
@@ -385,7 +391,7 @@ func (p *Peer) handleHeaderData(pack *Pack, step int) (int, error) {
 		p.readBuff.Skip(uint32(p.wantReadLen))
 
 		payloadLen := pack.Header.GetPayloadLen()
-		if payloadLen > PACK_MAX_PAYLOAD {
+		if payloadLen > p.maxPayload {
 			return step, ErrPeerReadPackTooBig
 		}
 
@@ -507,6 +513,10 @@ func (p *Peer) readPackFrame(frameBuff []byte) error {
 }
 
 func (p *Peer) isSingleFramePack(pack *Pack) bool {
+	if !pack.Header.HasDst() {
+		return true
+	}
+
 	peerType, peerNo := pack.Header.GetDstPeer()
 	if peerType == p.mgr.GetOwnerType() && peerNo == p.mgr.GetOwnerNo() {
 		return true
