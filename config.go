@@ -6,6 +6,7 @@ type BaseConfig struct {
 	MaxWriteQue    uint32 `json:"max_write_queue"`
 	Network        string `json:"network"`
 	Address        string `json:"address"`
+	Port           uint16 `json:"port"`
 	BindPeerType   uint32 `json:"bind_peer_type"`
 	MinPeerNo      uint64 `json:"min_peer_no"`
 	MaxPeerNo      uint64 `json:"max_peer_no"`
