@@ -86,11 +86,13 @@ func (c *WebSockConn) SetDeadline(t time.Time) error {
 }
 
 func (c *WebSockConn) SetReadDeadline(t time.Time) error {
-	return c.conn.SetReadDeadline(t)
+	// return c.conn.SetReadDeadline(t)
+	return nil
 }
 
 func (c *WebSockConn) SetWriteDeadline(t time.Time) error {
-	return c.conn.SetWriteDeadline(t)
+	// return c.conn.SetWriteDeadline(t)
+	return nil
 }
 
 func (c *WebSockConn) readFromBuff(b []byte) (n int, err error) {
