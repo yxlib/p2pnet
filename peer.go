@@ -146,11 +146,11 @@ func (p *Peer) CreatePack() *Pack {
 }
 
 func (p *Peer) ReusePack(pack *Pack) {
-	for _, buff := range pack.oriBuffs {
-		p.buffPool.ReuseBuff(buff)
-	}
+	// for _, buff := range pack.oriBuffs {
+	// 	p.buffPool.ReuseBuff(buff)
+	// }
 
-	p.packPool.Put(pack)
+	// p.packPool.Put(pack)
 }
 
 func (p *Peer) SetBuffPool(pool *yx.BuffPool) {
