@@ -418,7 +418,13 @@ func (p *Peer) readPackData(pack *Pack) (int, error) {
 	}
 
 	if p.isSingleFramePack(pack) { // single frame
-		oriBuff := p.buffPool.CreateBuff(uint16(payloadLen))
+		var oriBuff []byte = nil
+		if payloadLen > yx.BP_MAX_BUFF_SIZE {
+			oriBuff = make([]byte, payloadLen)
+		} else {
+			oriBuff = p.buffPool.CreateBuff(uint16(payloadLen))
+		}
+
 		payloadBuff := oriBuff[:payloadLen]
 		err := p.readPackFrame(payloadBuff)
 		if err != nil {
