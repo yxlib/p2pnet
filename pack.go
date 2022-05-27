@@ -245,7 +245,12 @@ func (p *Pack) AddReuseFrame(oriBuff []byte, frameSize uint) error {
 	}
 
 	p.oriBuffs = append(p.oriBuffs, oriBuff)
-	p.AddFrame(oriBuff[:frameSize])
+	if len(oriBuff) == int(frameSize) {
+		p.AddFrame(oriBuff)
+	} else {
+		p.AddFrame(oriBuff[:frameSize])
+	}
+
 	return nil
 }
 
@@ -270,7 +275,10 @@ func (p *Pack) UpdatePayloadLen() {
 }
 
 func (p *Pack) Reset() {
-	p.Header.Reset()
+	if p.Header != nil {
+		p.Header.Reset()
+	}
+
 	p.Payload = make([]PackFrame, 0)
 	p.oriBuffs = make([]PackFrame, 0)
 }
@@ -279,29 +287,52 @@ func (p *Pack) Reset() {
 //         PackPool
 //========================
 type PackPool struct {
-	pool          *sync.Pool
-	headerFactory PackHeaderFactory
+	pool            *sync.Pool
+	headerFactory   PackHeaderFactory
+	headerClassName string
 }
 
 func NewPackPool(headerFactory PackHeaderFactory) *PackPool {
 	p := &PackPool{
-		pool:          &sync.Pool{},
-		headerFactory: headerFactory,
+		pool:            &sync.Pool{},
+		headerFactory:   headerFactory,
+		headerClassName: "",
 	}
 
 	p.pool.New = p.newPack
+
+	if p.headerFactory != nil {
+		tmpHeader := p.headerFactory.CreateHeader()
+		p.headerClassName, _ = yx.GetClassReflectName(tmpHeader)
+	}
 
 	return p
 }
 
 func (p *PackPool) Put(pack *Pack) {
+	if pack == nil {
+		return
+	}
+
 	pack.Reset()
+	if pack.Header != nil {
+		name, _ := yx.GetClassReflectName(pack.Header)
+		if name != p.headerClassName {
+			pack.Header = nil
+		}
+	}
+
 	p.pool.Put(pack)
 }
 
 func (p *PackPool) Get() *Pack {
 	obj := p.pool.Get()
-	return obj.(*Pack)
+	pack := obj.(*Pack)
+	if pack.Header == nil && p.headerFactory != nil {
+		pack.Header = p.headerFactory.CreateHeader()
+	}
+
+	return pack
 }
 
 func (p *PackPool) newPack() interface{} {
