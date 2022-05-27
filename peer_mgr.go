@@ -64,7 +64,7 @@ type PeerMgr interface {
 type BasePeerMgr struct {
 	peerType       uint32
 	peerNo         uint32
-	buffPool       *yx.BuffPool
+	buffFactory    *yx.BuffFactory
 	lckReadPeerIds *sync.Mutex
 	readPeerIdSet  map[uint32]bool
 	lckPeer        *sync.RWMutex
@@ -86,7 +86,7 @@ func NewBasePeerMgr(peerType uint32, peerNo uint32) *BasePeerMgr {
 	return &BasePeerMgr{
 		peerType:       peerType,
 		peerNo:         peerNo,
-		buffPool:       yx.NewBuffPool(PEER_MGR_MAX_BUFF_REUSE_CNT),
+		buffFactory:    yx.NewBuffFactory(),
 		lckReadPeerIds: &sync.Mutex{},
 		readPeerIdSet:  make(map[uint32]bool),
 		lckPeer:        &sync.RWMutex{},
@@ -147,7 +147,7 @@ func (m *BasePeerMgr) Stop() {
 
 func (m *BasePeerMgr) AddPeer(peer *Peer, bUnknownPeer bool, bRegister bool) {
 	peer.SetMgr(m)
-	peer.SetBuffPool(m.buffPool)
+	peer.SetBuffFactory(m.buffFactory)
 
 	if bUnknownPeer {
 		bSucc := m.addUnknownPeer(peer)

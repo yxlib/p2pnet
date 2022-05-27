@@ -79,9 +79,9 @@ type Peer struct {
 	bForceClose bool
 	lckClose    *sync.Mutex
 
-	mgr      PeerListener
-	packPool *PackPool
-	buffPool *yx.BuffPool
+	mgr         PeerListener
+	packPool    *PackPool
+	buffFactory *yx.BuffFactory
 	// headerFactory PackHeaderFactory
 
 	maxPayload    int
@@ -114,7 +114,7 @@ func NewPeer(peerType uint32, peerNo uint32, c net.Conn, maxReadQue uint32, maxW
 		lckClose:    &sync.Mutex{},
 		mgr:         nil,
 		packPool:    nil,
-		buffPool:    nil,
+		buffFactory: nil,
 		// headerFactory: nil,
 		maxPayload:    PACK_MAX_PAYLOAD,
 		wantReadLen:   0,
@@ -147,14 +147,14 @@ func (p *Peer) CreatePack() *Pack {
 
 func (p *Peer) ReusePack(pack *Pack) {
 	for _, buff := range pack.oriBuffs {
-		p.buffPool.ReuseBuff(buff)
+		p.buffFactory.ReuseBuff(&buff)
 	}
 
 	p.packPool.Put(pack)
 }
 
-func (p *Peer) SetBuffPool(pool *yx.BuffPool) {
-	p.buffPool = pool
+func (p *Peer) SetBuffFactory(pool *yx.BuffFactory) {
+	p.buffFactory = pool
 }
 
 // func (p *Peer) SetHeaderFactory(headerFactory PackHeaderFactory) {
@@ -325,6 +325,7 @@ func (p *Peer) readPack() (*Pack, error) {
 	}
 
 	if err != nil {
+		p.ReusePack(pack)
 		return nil, err
 	}
 
@@ -434,41 +435,27 @@ func (p *Peer) readPackData(pack *Pack) (int, error) {
 	}
 
 	if p.isSingleFramePack(pack) { // single frame
-		var oriBuff []byte = nil
-		if payloadLen > yx.BP_MAX_BUFF_SIZE {
-			oriBuff = make([]byte, payloadLen)
-		} else {
-			oriBuff = p.buffPool.CreateBuff(uint16(payloadLen))
-		}
-
-		payloadBuff := oriBuff[:payloadLen]
-		err = p.readPackFrame(payloadBuff)
+		err = p.readPackFrame(pack, payloadLen)
 		if err != nil {
 			return PEER_READ_STEP_DATA, err
 		}
 
-		// pack.AddFrame(payloadBuff)
-		pack.AddReuseFrame(oriBuff, uint(payloadLen))
 		return PEER_READ_STEP_END, nil
 
 	} else { // multi frames
-		var frames []PackFrame = nil
-		frames, err = p.readPackFrames(payloadLen)
+		err = p.readPackFrames(pack, payloadLen)
 		if err != nil {
 			return PEER_READ_STEP_DATA, err
 		}
 
-		pack.AddFrames(frames)
 		return PEER_READ_STEP_END, nil
 	}
 }
 
-func (p *Peer) readPackFrames(payloadLen int) ([]PackFrame, error) {
+func (p *Peer) readPackFrames(pack *Pack, payloadLen int) error {
 	var err error = nil
 	defer p.ec.DeferThrow("readPackFrames", &err)
 
-	var frames []PackFrame = make([]PackFrame, 0)
-	var f PackFrame = nil
 	leftLen := payloadLen
 	frameSize := int(0)
 
@@ -478,27 +465,35 @@ func (p *Peer) readPackFrames(payloadLen int) ([]PackFrame, error) {
 			frameSize = PACK_MAX_FRAME
 		}
 
-		f = make([]byte, frameSize)
-		err = p.readPackFrame(f)
+		err = p.readPackFrame(pack, frameSize)
 		if err != nil {
 			break
 		}
 
-		frames = append(frames, f)
 		leftLen -= frameSize
 		if leftLen == 0 {
 			break
 		}
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
-	return frames, nil
+	return err
 }
 
-func (p *Peer) readPackFrame(frameBuff []byte) error {
+func (p *Peer) readPackFrame(pack *Pack, payloadLen int) error {
+	buffRef := p.buffFactory.CreateBuff(uint32(payloadLen))
+	oriBuff := *buffRef
+	payloadBuff := oriBuff[:payloadLen]
+	err := p.readPackFrameImpl(payloadBuff)
+	if err != nil {
+		p.buffFactory.ReuseBuff(buffRef)
+		return err
+	}
+
+	pack.AddReuseFrame(oriBuff, uint(payloadLen))
+	return nil
+}
+
+func (p *Peer) readPackFrameImpl(frameBuff []byte) error {
 	var err error = nil
 	defer p.ec.DeferThrow("readPackFrame", &err)
 
