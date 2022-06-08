@@ -448,6 +448,7 @@ func (m *BasePeerMgr) sendRegPack(peer *Peer) {
 	regPack := peer.CreatePack()
 	header := regPack.Header
 	header.SetRegisterReqPack()
+	header.SetHasSrc(true)
 	header.SetSrcPeer(peerType, peerNo)
 	go peer.PushWritePack(regPack)
 }
