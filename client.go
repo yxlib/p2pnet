@@ -12,3 +12,50 @@ import (
 type Client interface {
 	DialTimeout(network string, address string, timeout time.Duration) (net.Conn, error)
 }
+
+type SimpleClient struct {
+	cli         Client
+	peerMgr     PeerMgr
+	packPool    *PackPool
+	maxReadQue  uint32
+	maxWriteQue uint32
+}
+
+func NewSimpleClient(cli Client, peerMgr PeerMgr, headerFactory PackHeaderFactory, maxReadQue uint32, maxWriteQue uint32) *SimpleClient {
+	return &SimpleClient{
+		cli:         cli,
+		peerMgr:     peerMgr,
+		packPool:    NewPackPool(headerFactory),
+		maxReadQue:  maxReadQue,
+		maxWriteQue: maxWriteQue,
+	}
+}
+
+func (c *SimpleClient) DialTimeout(network string, address string, timeout time.Duration) (net.Conn, error) {
+	conn, err := c.cli.DialTimeout(network, address, timeout)
+	return conn, err
+}
+
+func (c *SimpleClient) OpenConn(peerType uint32, peerNo uint32, network string, address string, timeout time.Duration, bRegister bool) error {
+	conn, err := c.cli.DialTimeout(network, address, timeout)
+	if err != nil {
+		return err
+	}
+
+	p := NewPeer(peerType, peerNo, conn, c.maxReadQue, c.maxWriteQue)
+	p.SetPackPool(c.packPool)
+	c.peerMgr.AddPeer(p, false, bRegister)
+	return nil
+}
+
+func (c *SimpleClient) GetPeerMgr() PeerMgr {
+	return c.peerMgr
+}
+
+func (s *BaseServer) Start() {
+	s.peerMgr.Start()
+}
+
+func (s *BaseServer) Stop() {
+	s.peerMgr.Stop()
+}

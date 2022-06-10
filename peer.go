@@ -84,12 +84,13 @@ type Peer struct {
 	buffFactory *yx.BuffFactory
 	// headerFactory PackHeaderFactory
 
-	maxPayload    int
-	wantReadLen   int
-	readBuff      *yx.SimpleBuffer
-	evtExitRead   *yx.Event
-	queReadPacks  chan *Pack
-	queWritePacks chan *Pack
+	maxPayload     int
+	wantReadLen    int
+	readBuff       *yx.SimpleBuffer
+	evtExitRead    *yx.Event
+	chanCloseWrite chan byte
+	queReadPacks   chan *Pack
+	queWritePacks  chan *Pack
 
 	connStartTime int64
 	bHasDataOpt   bool
@@ -116,20 +117,21 @@ func NewPeer(peerType uint32, peerNo uint32, c net.Conn, maxReadQue uint32, maxW
 		packPool:    nil,
 		buffFactory: nil,
 		// headerFactory: nil,
-		maxPayload:    PACK_MAX_PAYLOAD,
-		wantReadLen:   0,
-		readBuff:      yx.NewSimpleBuffer(PEER_READ_BUFF_SIZE),
-		evtExitRead:   yx.NewEvent(),
-		queReadPacks:  make(chan *Pack, maxReadQue),
-		queWritePacks: make(chan *Pack, maxWriteQue),
-		connStartTime: 0,
-		bHasDataOpt:   false,
-		actTime:       0,
-		bStatSendInfo: false,
-		lckSendInfo:   &sync.Mutex{},
-		sendCnt:       0,
-		sendSize:      0,
-		ec:            yx.NewErrCatcher("p2pnet.Peer"),
+		maxPayload:     PACK_MAX_PAYLOAD,
+		wantReadLen:    0,
+		readBuff:       yx.NewSimpleBuffer(PEER_READ_BUFF_SIZE),
+		evtExitRead:    yx.NewEvent(),
+		chanCloseWrite: make(chan byte),
+		queReadPacks:   make(chan *Pack, maxReadQue),
+		queWritePacks:  make(chan *Pack, maxWriteQue),
+		connStartTime:  0,
+		bHasDataOpt:    false,
+		actTime:        0,
+		bStatSendInfo:  false,
+		lckSendInfo:    &sync.Mutex{},
+		sendCnt:        0,
+		sendSize:       0,
+		ec:             yx.NewErrCatcher("p2pnet.Peer"),
 	}
 }
 
@@ -236,7 +238,13 @@ func (p *Peer) PushWritePack(pack *Pack) error {
 		return p.ec.Throw("PushWritePack", ErrPeerWritePackNil)
 	}
 
-	p.queWritePacks <- pack
+	select {
+	case <-p.chanCloseWrite:
+		return p.ec.Throw("PushWritePack", ErrPeerClose)
+	default:
+		p.queWritePacks <- pack
+	}
+
 	return nil
 }
 
@@ -270,26 +278,21 @@ func (p *Peer) readLoop() {
 	p.mgr.OnPeerError(p, err)
 
 	// wake up write loop and note to exit
-	close(p.queWritePacks)
+	close(p.chanCloseWrite)
+	// close(p.queWritePacks)
 
 	p.evtExitRead.Send()
 }
 
 func (p *Peer) writeLoop() {
 	var err error = nil
+	var bExit bool = false
 
 	for {
-		pack, ok := <-p.queWritePacks
-		if !ok {
+		bExit, err = p.selectOneWritePack()
+		if err != nil || bExit {
 			break
 		}
-
-		err = p.writePack(pack)
-		if err != nil {
-			break
-		}
-
-		p.ReusePack(pack)
 	}
 
 	if err != nil {
@@ -302,6 +305,36 @@ func (p *Peer) writeLoop() {
 
 	p.mgr.OnPeerClose(p)
 	p.bExit = true
+}
+
+func (p *Peer) selectOneWritePack() (bool, error) {
+	var err error = nil
+
+	select {
+	case pack := <-p.queWritePacks:
+		err = p.writeOnePack(pack)
+
+	case <-p.chanCloseWrite:
+		select {
+		case pack := <-p.queWritePacks:
+			err = p.writeOnePack(pack)
+
+		default:
+			return true, nil
+		}
+	}
+
+	return (err != nil), err
+}
+
+func (p *Peer) writeOnePack(pack *Pack) error {
+	err := p.writePack(pack)
+	if err != nil {
+		return err
+	}
+
+	p.ReusePack(pack)
+	return nil
 }
 
 func (p *Peer) readPack() (*Pack, error) {
