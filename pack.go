@@ -265,6 +265,31 @@ func (p *Pack) AddFrames(frames []PackFrame) error {
 	return nil
 }
 
+func (p *Pack) GetFramesJoin() ([]byte, bool) {
+	if len(p.Payload) == 0 {
+		return nil, false
+	}
+
+	if len(p.Payload) == 1 {
+		return p.Payload[0], true
+	}
+
+	offset := 0
+	payloadLen := p.Header.GetPayloadLen()
+	buff := make([]byte, payloadLen)
+	for _, frame := range p.Payload {
+		frameLen := len(frame)
+		if frameLen == 0 {
+			continue
+		}
+
+		copy(buff[offset:], frame)
+		offset += frameLen
+	}
+
+	return buff, true
+}
+
 func (p *Pack) UpdatePayloadLen() {
 	payloadLen := 0
 	for _, frame := range p.Payload {
