@@ -8,7 +8,6 @@ import (
 	"errors"
 	"net"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -53,12 +52,6 @@ type HealtyCfg struct {
 	maxActIntv  int64
 	maxSendFreq int
 	maxSendUnit int
-}
-
-func GetRemoteAddr(c net.Conn) string {
-	ipAddr := c.RemoteAddr().String()
-	subStrs := strings.Split(ipAddr, ":")
-	return subStrs[0]
 }
 
 type PeerListener interface {
