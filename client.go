@@ -14,20 +14,22 @@ type Client interface {
 }
 
 type SimpleClient struct {
-	cli         Client
-	peerMgr     PeerMgr
-	packPool    *PackPool
-	maxReadQue  uint32
-	maxWriteQue uint32
+	cli           Client
+	peerMgr       PeerMgr
+	headerFactory PackHeaderFactory
+	packPool      *PackPool
+	maxReadQue    uint32
+	maxWriteQue   uint32
 }
 
 func NewSimpleClient(cli Client, peerMgr PeerMgr, headerFactory PackHeaderFactory, maxReadQue uint32, maxWriteQue uint32) *SimpleClient {
 	return &SimpleClient{
-		cli:         cli,
-		peerMgr:     peerMgr,
-		packPool:    NewPackPool(headerFactory),
-		maxReadQue:  maxReadQue,
-		maxWriteQue: maxWriteQue,
+		cli:           cli,
+		peerMgr:       peerMgr,
+		headerFactory: headerFactory,
+		packPool:      NewPackPool(headerFactory),
+		maxReadQue:    maxReadQue,
+		maxWriteQue:   maxWriteQue,
 	}
 }
 
@@ -50,6 +52,10 @@ func (c *SimpleClient) OpenConn(peerType uint32, peerNo uint32, network string, 
 
 func (c *SimpleClient) GetPeerMgr() PeerMgr {
 	return c.peerMgr
+}
+
+func (c *SimpleClient) GetPackHeaderFactory() PackHeaderFactory {
+	return c.headerFactory
 }
 
 func (s *BaseServer) Start() {
