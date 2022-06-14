@@ -72,9 +72,11 @@ type BasePeerMgr struct {
 	unknownPeers   []*Peer
 	closedPeers    []*Peer
 
-	listeners []P2pNetListener
-	evtStop   *yx.Event
-	evtExit   *yx.Event
+	listeners    []P2pNetListener
+	lckListeners *sync.RWMutex
+
+	evtStop *yx.Event
+	evtExit *yx.Event
 
 	lckRunning *sync.Mutex
 	bRunning   bool
@@ -94,6 +96,7 @@ func NewBasePeerMgr(peerType uint32, peerNo uint32) *BasePeerMgr {
 		unknownPeers:   make([]*Peer, 0),
 		closedPeers:    make([]*Peer, 0),
 		listeners:      make([]P2pNetListener, 0),
+		lckListeners:   &sync.RWMutex{},
 		evtStop:        yx.NewEvent(),
 		evtExit:        yx.NewEvent(),
 		lckRunning:     &sync.Mutex{},
@@ -107,6 +110,9 @@ func (m *BasePeerMgr) AddListener(l P2pNetListener) {
 		return
 	}
 
+	m.lckListeners.Lock()
+	defer m.lckListeners.Unlock()
+
 	m.listeners = append(m.listeners, l)
 }
 
@@ -114,6 +120,9 @@ func (m *BasePeerMgr) RemoveListener(l P2pNetListener) {
 	if l == nil {
 		return
 	}
+
+	m.lckListeners.Lock()
+	defer m.lckListeners.Unlock()
 
 	for i, exist := range m.listeners {
 		if exist == l {
@@ -331,7 +340,7 @@ Exit0:
 }
 
 func (m *BasePeerMgr) handleReadPacks() {
-	if len(m.listeners) == 0 {
+	if m.getListenerCnt() == 0 {
 		return
 	}
 
@@ -654,19 +663,35 @@ func (m *BasePeerMgr) waitAllPeerClosed() {
 	ticker.Stop()
 }
 
+func (m *BasePeerMgr) getListenerCnt() int {
+	m.lckListeners.RLock()
+	defer m.lckListeners.RUnlock()
+
+	return len(m.listeners)
+}
+
 func (m *BasePeerMgr) notifyPeerOpen(peerType uint32, peerNo uint32) {
+	m.lckListeners.RLock()
+	defer m.lckListeners.RUnlock()
+
 	for _, l := range m.listeners {
 		l.OnP2pNetOpenPeer(m, peerType, peerNo)
 	}
 }
 
 func (m *BasePeerMgr) notifyPeerClose(peerType uint32, peerNo uint32, ipAddr string) {
+	m.lckListeners.RLock()
+	defer m.lckListeners.RUnlock()
+
 	for _, l := range m.listeners {
 		l.OnP2pNetClosePeer(m, peerType, peerNo, ipAddr)
 	}
 }
 
 func (m *BasePeerMgr) notifyPeerRead(pack *Pack, recvPeerType uint32, recvPeerNo uint32) {
+	m.lckListeners.RLock()
+	defer m.lckListeners.RUnlock()
+
 	for _, l := range m.listeners {
 		bHandle := l.OnP2pNetReadPack(m, pack, recvPeerType, recvPeerNo)
 		if bHandle {
@@ -676,6 +701,9 @@ func (m *BasePeerMgr) notifyPeerRead(pack *Pack, recvPeerType uint32, recvPeerNo
 }
 
 func (m *BasePeerMgr) notifyPeerError(p *Peer, err error) {
+	m.lckListeners.RLock()
+	defer m.lckListeners.RUnlock()
+
 	for _, l := range m.listeners {
 		l.OnP2pNetError(m, p.GetPeerType(), p.GetPeerNo(), err)
 	}
