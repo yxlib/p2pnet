@@ -7,6 +7,8 @@ package p2pnet
 import (
 	"net"
 	"time"
+
+	"github.com/yxlib/yx"
 )
 
 type Client interface {
@@ -20,6 +22,7 @@ type SimpleClient struct {
 	packPool      *PackPool
 	maxReadQue    uint32
 	maxWriteQue   uint32
+	ec            *yx.ErrCatcher
 }
 
 func NewSimpleClient(cli Client, peerMgr PeerMgr, headerFactory PackHeaderFactory, maxReadQue uint32, maxWriteQue uint32) *SimpleClient {
@@ -30,18 +33,23 @@ func NewSimpleClient(cli Client, peerMgr PeerMgr, headerFactory PackHeaderFactor
 		packPool:      NewPackPool(headerFactory),
 		maxReadQue:    maxReadQue,
 		maxWriteQue:   maxWriteQue,
+		ec:            yx.NewErrCatcher("SimpleClient"),
 	}
 }
 
 func (c *SimpleClient) DialTimeout(network string, address string, timeout time.Duration) (net.Conn, error) {
 	conn, err := c.cli.DialTimeout(network, address, timeout)
-	return conn, err
+	if err != nil {
+		return nil, c.ec.Throw("DialTimeout", err)
+	}
+
+	return conn, nil
 }
 
 func (c *SimpleClient) OpenConn(peerType uint32, peerNo uint32, network string, address string, timeout time.Duration, bRegister bool) error {
 	conn, err := c.cli.DialTimeout(network, address, timeout)
 	if err != nil {
-		return err
+		return c.ec.Throw("OpenConn", err)
 	}
 
 	p := NewPeer(peerType, peerNo, conn, c.maxReadQue, c.maxWriteQue)

@@ -215,12 +215,12 @@ func (p *Peer) IsExit() bool {
 
 func (p *Peer) PopReadPack() (*Pack, error) {
 	if len(p.queReadPacks) == 0 {
-		return nil, ErrPeerReadQueEmpty
+		return nil, p.ec.Throw("PopReadPack", ErrPeerReadQueEmpty)
 	}
 
 	pack, ok := <-p.queReadPacks
 	if !ok {
-		return nil, ErrPeerReadQueClose
+		return nil, p.ec.Throw("PopReadPack", ErrPeerReadQueClose)
 	}
 
 	return pack, nil
@@ -302,6 +302,7 @@ func (p *Peer) writeLoop() {
 
 func (p *Peer) selectOneWritePack() (bool, error) {
 	var err error = nil
+	defer p.ec.DeferThrow("selectOneWritePack", &err)
 
 	select {
 	case pack := <-p.queWritePacks:
@@ -323,7 +324,7 @@ func (p *Peer) selectOneWritePack() (bool, error) {
 func (p *Peer) writeOnePack(pack *Pack) error {
 	err := p.writePack(pack)
 	if err != nil {
-		return err
+		return p.ec.Throw("writeOnePack", err)
 	}
 
 	p.ReusePack(pack)
@@ -404,6 +405,9 @@ func (p *Peer) readPackHeader(pack *Pack, step int) (int, error) {
 }
 
 func (p *Peer) handleHeaderData(pack *Pack, step int) (int, error) {
+	var err error = nil
+	defer p.ec.DeferThrow("handleHeaderData", &err)
+
 	data := p.readBuff.GetData()
 
 	if step == PEER_READ_STEP_MARK { // mark
@@ -414,7 +418,8 @@ func (p *Peer) handleHeaderData(pack *Pack, step int) (int, error) {
 
 		// verify first
 		if !pack.Header.VerifyMark() {
-			return step, ErrPeerMarkErr
+			err = ErrPeerMarkErr
+			return step, err
 		}
 
 		headerLen := pack.Header.GetHeaderLen()
@@ -432,7 +437,8 @@ func (p *Peer) handleHeaderData(pack *Pack, step int) (int, error) {
 
 		payloadLen := pack.Header.GetPayloadLen()
 		if payloadLen > p.maxPayload {
-			return step, ErrPeerReadPackTooBig
+			err = ErrPeerReadPackTooBig
+			return step, err
 		}
 
 		// if p.bBindSrc {
@@ -512,7 +518,7 @@ func (p *Peer) readPackFrame(pack *Pack, payloadLen int) error {
 	err := p.readPackFrameImpl(payloadBuff)
 	if err != nil {
 		p.buffFactory.ReuseBuff(buffRef)
-		return err
+		return p.ec.Throw("readPackFrame", err)
 	}
 
 	pack.AddReuseFrame(oriBuff, uint(payloadLen))
@@ -588,7 +594,8 @@ func (p *Peer) readBytes(buff []byte) (int, error) {
 	defer p.ec.DeferThrow("readBytes", &err)
 
 	if p.bCloseRead {
-		return 0, ErrPeerClose
+		err = ErrPeerClose
+		return 0, err
 	}
 
 	err = p.conn.SetReadDeadline(time.Now().Add(PEER_READ_TIMEOUT))
@@ -609,6 +616,9 @@ func (p *Peer) readBytes(buff []byte) (int, error) {
 }
 
 func (p *Peer) writePack(pack *Pack) error {
+	var err error = nil
+	defer p.ec.DeferThrow("writePack", &err)
+
 	buff, err := pack.Header.Marshal()
 	if err != nil {
 		return err
@@ -636,6 +646,8 @@ func (p *Peer) writePack(pack *Pack) error {
 
 func (p *Peer) writeBytes(b []byte) error {
 	var err error = nil
+	defer p.ec.DeferThrow("writeBytes", &err)
+
 	buffLen := len(b)
 	totalWriteLen := 0
 

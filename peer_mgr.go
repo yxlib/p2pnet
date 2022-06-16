@@ -195,20 +195,26 @@ func (m *BasePeerMgr) IsPeerExist(peerType uint32, peerNo uint32) bool {
 
 func (m *BasePeerMgr) Send(pack *Pack) error {
 	dstType, dstNo := pack.Header.GetDstPeer()
-	return m.SendByPeer(pack, dstType, dstNo)
+	err := m.SendByPeer(pack, dstType, dstNo)
+	return m.ec.Throw("Send", err)
 }
 
 func (m *BasePeerMgr) SendByPeer(pack *Pack, nextPeerType uint32, nextPeerNo uint32) error {
+	var err error = nil
+	defer m.ec.DeferThrow("SendByPeer", &err)
+
 	if pack.Header == nil {
-		return ErrPeerMgrHeaderNil
+		err = ErrPeerMgrHeaderNil
+		return err
 	}
 
 	peer, ok := m.getPeerImpl(nextPeerType, nextPeerNo)
 	if !ok {
-		return ErrPeerMgrPeerNotExist
+		err = ErrPeerMgrPeerNotExist
+		return err
 	}
 
-	err := peer.PushWritePack(pack)
+	err = peer.PushWritePack(pack)
 	return err
 }
 
@@ -411,6 +417,9 @@ func (m *BasePeerMgr) loopReadPack(peers []*Peer) ([]*PackWrap, []*Peer) {
 }
 
 func (m *BasePeerMgr) handleCtrlPack(pack *Pack, peer *Peer, bUnknownPeer bool) error {
+	var err error = nil
+	defer m.ec.Catch("handleCtrlPack", &err)
+
 	if pack.Header.IsPongPack() {
 		return nil
 	}
@@ -425,7 +434,8 @@ func (m *BasePeerMgr) handleCtrlPack(pack *Pack, peer *Peer, bUnknownPeer bool) 
 
 	if pack.Header.IsRegisterReqPack() {
 		if !bUnknownPeer {
-			return ErrPeerMgrInvalidPack
+			err = ErrPeerMgrInvalidPack
+			return err
 		}
 
 		m.handleRegReq(pack, peer)
@@ -434,14 +444,16 @@ func (m *BasePeerMgr) handleCtrlPack(pack *Pack, peer *Peer, bUnknownPeer bool) 
 
 	if pack.Header.IsRegisterRespPack() {
 		if bUnknownPeer {
-			return ErrPeerMgrInvalidPack
+			err = ErrPeerMgrInvalidPack
+			return err
 		}
 
 		// m.bindPeer(peer)
 		return nil
 	}
 
-	return ErrPeerMgrInvalidPack
+	err = ErrPeerMgrInvalidPack
+	return err
 }
 
 func (m *BasePeerMgr) handlePingPack(peer *Peer) {

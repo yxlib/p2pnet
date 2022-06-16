@@ -43,6 +43,7 @@ func (s *SockServ) Listen(network string, address string) error {
 		// accept
 		c, err := s.accept()
 		if err != nil {
+			s.ec.Catch("Listen", &err)
 			break
 		}
 
