@@ -11,6 +11,8 @@ import (
 )
 
 type Server interface {
+	GetPeerMgr() PeerMgr
+	GetPackHeaderFactory() PackHeaderFactory
 	SetAcceptBindPeerType(bindPeerType uint32, minPeerNo uint64, maxPeerNo uint64)
 	Listen(network string, address string) error
 	Close() error
@@ -25,6 +27,7 @@ type BaseServer struct {
 	bAcceptBindPeerType bool
 	bindPeerType        uint32
 	peerNoGenerator     *yx.IdGenerator
+	headerFactory       PackHeaderFactory
 	packPool            *PackPool
 	maxReadQue          uint32
 	maxWriteQue         uint32
@@ -40,6 +43,7 @@ func NewBaseServ(peerMgr PeerMgr, ipConnCntLimit uint32, headerFactory PackHeade
 		bAcceptBindPeerType: false,
 		bindPeerType:        0,
 		peerNoGenerator:     nil,
+		headerFactory:       headerFactory,
 		packPool:            NewPackPool(headerFactory),
 		maxReadQue:          maxReadQue,
 		maxWriteQue:         maxWriteQue,
@@ -54,6 +58,10 @@ func NewBaseServ(peerMgr PeerMgr, ipConnCntLimit uint32, headerFactory PackHeade
 
 func (s *BaseServer) GetPeerMgr() PeerMgr {
 	return s.peerMgr
+}
+
+func (s *BaseServer) GetPackHeaderFactory() PackHeaderFactory {
+	return s.headerFactory
 }
 
 func (s *BaseServer) SetAcceptBindPeerType(bindPeerType uint32, minPeerNo uint64, maxPeerNo uint64) {

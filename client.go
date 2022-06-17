@@ -66,10 +66,10 @@ func (c *SimpleClient) GetPackHeaderFactory() PackHeaderFactory {
 	return c.headerFactory
 }
 
-func (c *SimpleClient) Start() {
-	c.peerMgr.Start()
-}
+// func (c *SimpleClient) Start() {
+// 	c.peerMgr.Start()
+// }
 
-func (c *SimpleClient) Stop() {
-	c.peerMgr.Stop()
-}
+// func (c *SimpleClient) Stop() {
+// 	c.peerMgr.Stop()
+// }
