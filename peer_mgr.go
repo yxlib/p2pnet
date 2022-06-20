@@ -463,8 +463,8 @@ func (m *BasePeerMgr) handlePingPack(peer *Peer) {
 }
 
 func (m *BasePeerMgr) sendRegPack(peer *Peer) {
-	peerType := peer.GetPeerType()
-	peerNo := peer.GetPeerNo()
+	peerType := m.peerType
+	peerNo := m.peerNo
 
 	regPack := peer.CreatePack()
 	header := regPack.Header
