@@ -14,6 +14,8 @@ type BaseConfig struct {
 	BindPeerType   uint32 `json:"bind_peer_type"`
 	MinPeerNo      uint64 `json:"min_peer_no"`
 	MaxPeerNo      uint64 `json:"max_peer_no"`
+	MinCheckIntv   int64  `json:"min_check_intv_second"`
+	CheckIntv      int64  `json:"check_intv_second"`
 	MaxIdleTime    int64  `json:"max_idle_time_second"`
 	MaxActIntv     int64  `json:"max_act_intv_second"`
 	MaxSendFreq    int    `json:"max_send_cnt_per_second"`

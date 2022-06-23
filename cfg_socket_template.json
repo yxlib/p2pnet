@@ -8,6 +8,8 @@
     "bind_peer_type" : 3,
     "min_peer_no" : 1,
     "max_peer_no" : 65535,
+    "min_check_intv_second" : 3,
+    "check_intv_second" : 10,
     "max_idle_time_second" : 15,
     "max_act_intv_second" : 30,
     "max_send_cnt_per_second" : 60,

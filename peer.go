@@ -48,10 +48,10 @@ const (
 // )
 
 type HealtyCfg struct {
-	maxIdleTime int64
-	maxActIntv  int64
-	maxSendFreq int
-	maxSendUnit int
+	MaxIdleTime int64
+	MaxActIntv  int64
+	MaxSendFreq int
+	MaxSendUnit int
 }
 
 type PeerListener interface {
@@ -699,13 +699,13 @@ func (p *Peer) recordHealthyInfo(pack *Pack) {
 }
 
 func (p *Peer) isBadPeer(cfg *HealtyCfg, startTime int64, now int64) bool {
-	if now-p.connStartTime >= cfg.maxIdleTime {
+	if now-p.connStartTime >= cfg.MaxIdleTime {
 		if !p.bHasDataOpt {
 			return true
 		}
 	}
 
-	if now-p.actTime > cfg.maxActIntv {
+	if now-p.actTime > cfg.MaxActIntv {
 		return true
 	}
 
@@ -714,11 +714,11 @@ func (p *Peer) isBadPeer(cfg *HealtyCfg, startTime int64, now int64) bool {
 	defer p.lckSendInfo.Unlock()
 
 	actDuration := now - startTime
-	if (cfg.maxSendFreq != 0) && (p.sendCnt > cfg.maxSendFreq*int(actDuration)) {
+	if (cfg.MaxSendFreq != 0) && (p.sendCnt > cfg.MaxSendFreq*int(actDuration)) {
 		return true
 	}
 
-	if (cfg.maxSendUnit != 0) && (p.sendSize > cfg.maxSendUnit*int(actDuration)) {
+	if (cfg.MaxSendUnit != 0) && (p.sendSize > cfg.MaxSendUnit*int(actDuration)) {
 		return true
 	}
 
