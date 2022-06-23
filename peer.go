@@ -48,10 +48,10 @@ const (
 // )
 
 type HealtyCfg struct {
-	MaxIdleTime int64
-	MaxActIntv  int64
-	MaxSendFreq int
-	MaxSendUnit int
+	MaxIdleTime int64 // nanoseconds
+	MaxActIntv  int64 // nanoseconds
+	MaxSendFreq int   // second
+	MaxSendUnit int   // second
 }
 
 type PeerListener interface {
@@ -186,7 +186,7 @@ func (p *Peer) SetMaxPayload(maxPayload int) {
 }
 
 func (p *Peer) Open() {
-	p.connStartTime = time.Now().Unix()
+	p.connStartTime = time.Now().UnixNano()
 
 	go p.readLoop()
 	go p.writeLoop()
@@ -245,8 +245,8 @@ func (p *Peer) SetStatSendInfo() {
 	p.bStatSendInfo = true
 }
 
-func (p *Peer) CheckHealthy(cfg *HealtyCfg, startTime int64, now int64) {
-	if p.isBadPeer(cfg, startTime, now) {
+func (p *Peer) CheckHealthy(cfg *HealtyCfg, startTimeNanosec int64, nowNanosec int64) {
+	if p.isBadPeer(cfg, startTimeNanosec, nowNanosec) {
 		p.Close()
 	}
 }
@@ -677,7 +677,7 @@ func (p *Peer) writeBytes(b []byte) error {
 
 func (p *Peer) recordHealthyInfo(pack *Pack) {
 	if !pack.Header.IsPongPack() {
-		p.actTime = time.Now().Unix()
+		p.actTime = time.Now().UnixNano()
 	}
 
 	if pack.Header.IsDataPack() {
@@ -698,14 +698,14 @@ func (p *Peer) recordHealthyInfo(pack *Pack) {
 	p.sendSize += packLen
 }
 
-func (p *Peer) isBadPeer(cfg *HealtyCfg, startTime int64, now int64) bool {
-	if now-p.connStartTime >= cfg.MaxIdleTime {
+func (p *Peer) isBadPeer(cfg *HealtyCfg, startTimeNanosec int64, nowNanosec int64) bool {
+	if nowNanosec-p.connStartTime >= cfg.MaxIdleTime*int64(time.Second) {
 		if !p.bHasDataOpt {
 			return true
 		}
 	}
 
-	if now-p.actTime > cfg.MaxActIntv {
+	if nowNanosec-p.actTime > cfg.MaxActIntv*int64(time.Second) {
 		return true
 	}
 
@@ -713,12 +713,12 @@ func (p *Peer) isBadPeer(cfg *HealtyCfg, startTime int64, now int64) bool {
 	p.lckSendInfo.Lock()
 	defer p.lckSendInfo.Unlock()
 
-	actDuration := now - startTime
-	if (cfg.MaxSendFreq != 0) && (p.sendCnt > cfg.MaxSendFreq*int(actDuration)) {
+	actDuration := (nowNanosec - startTimeNanosec) / int64(time.Millisecond)
+	if (cfg.MaxSendFreq != 0) && (p.sendCnt*1000 > cfg.MaxSendFreq*int(actDuration)) {
 		return true
 	}
 
-	if (cfg.MaxSendUnit != 0) && (p.sendSize > cfg.MaxSendUnit*int(actDuration)) {
+	if (cfg.MaxSendUnit != 0) && (p.sendSize*1000 > cfg.MaxSendUnit*int(actDuration)) {
 		return true
 	}
 
