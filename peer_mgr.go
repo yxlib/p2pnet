@@ -81,7 +81,8 @@ type BasePeerMgr struct {
 	lckRunning *sync.Mutex
 	bRunning   bool
 
-	ec *yx.ErrCatcher
+	ec     *yx.ErrCatcher
+	logger *yx.Logger
 }
 
 func NewBasePeerMgr(peerType uint32, peerNo uint32) *BasePeerMgr {
@@ -102,6 +103,7 @@ func NewBasePeerMgr(peerType uint32, peerNo uint32) *BasePeerMgr {
 		lckRunning:     &sync.Mutex{},
 		bRunning:       false,
 		ec:             yx.NewErrCatcher("p2pnet.BasePeerMgr"),
+		logger:         yx.NewLogger("p2pnet.BasePeerMgr"),
 	}
 }
 
@@ -228,6 +230,7 @@ func (m *BasePeerMgr) CloseRead(peerType uint32, peerNo uint32) {
 func (m *BasePeerMgr) ClosePeer(peerType uint32, peerNo uint32) {
 	peer, ok := m.getPeerImpl(peerType, peerNo)
 	if ok {
+		m.logger.W("ClosePeer")
 		peer.Close()
 	}
 }
@@ -290,12 +293,14 @@ func (m *BasePeerMgr) handleUnknownPeerRead(p *Peer) {
 	}
 
 	if pack.Header.IsDataPack() {
+		m.logger.E("unknown peer receive a data pack")
 		p.Close()
 		return
 	}
 
 	err = m.handleCtrlPack(pack, p, true)
 	if err != nil {
+		m.logger.E("unknown peer handle control package err: ", err)
 		p.Close()
 	}
 }
@@ -398,6 +403,7 @@ func (m *BasePeerMgr) loopReadPack(peers []*Peer) ([]*PackWrap, []*Peer) {
 		if !pack.Header.IsDataPack() {
 			err = m.handleCtrlPack(pack, peer, false)
 			if err != nil {
+				m.logger.E("known peer handle control package err: ", err)
 				peer.Close()
 				continue
 			}
@@ -495,6 +501,7 @@ func (m *BasePeerMgr) addKnownPeer(peer *Peer, peerType uint32, peerNo uint32) b
 			return false
 		}
 
+		m.logger.E("add known peer close old peer (", peerType, ", ", peerNo, ")")
 		oldPeer.Close()
 	}
 
@@ -538,6 +545,7 @@ func (m *BasePeerMgr) bindPeerImpl(peer *Peer) {
 	id := m.GetPeerId(peer.peerType, peer.peerNo)
 	oldPeer, ok := m.mapPeerId2Peer[id]
 	if ok && (oldPeer != peer) {
+		m.logger.E("bind peer close old peer (", peer.peerType, ", ", peer.peerNo, ")")
 		oldPeer.Close()
 	}
 

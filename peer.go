@@ -93,7 +93,8 @@ type Peer struct {
 	sendCnt       int
 	sendSize      int
 
-	ec *yx.ErrCatcher
+	ec     *yx.ErrCatcher
+	logger *yx.Logger
 }
 
 func NewPeer(peerType uint32, peerNo uint32, c net.Conn, maxReadQue uint32, maxWriteQue uint32) *Peer {
@@ -125,6 +126,7 @@ func NewPeer(peerType uint32, peerNo uint32, c net.Conn, maxReadQue uint32, maxW
 		sendCnt:        0,
 		sendSize:       0,
 		ec:             yx.NewErrCatcher("p2pnet.Peer"),
+		logger:         yx.NewLogger("p2pnet.Peer"),
 	}
 }
 
@@ -247,6 +249,7 @@ func (p *Peer) SetStatSendInfo() {
 
 func (p *Peer) CheckHealthy(cfg *HealtyCfg, startTimeNanosec int64, nowNanosec int64) {
 	if p.isBadPeer(cfg, startTimeNanosec, nowNanosec) {
+		p.logger.E("CheckHealthy: bad peer")
 		p.Close()
 	}
 }
