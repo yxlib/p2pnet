@@ -477,7 +477,7 @@ func (m *BasePeerMgr) sendRegPack(peer *Peer) {
 	header.SetRegisterReqPack()
 	header.SetHasSrc(true)
 	header.SetSrcPeer(peerType, peerNo)
-	go peer.PushWritePack(regPack)
+	peer.PushWritePack(regPack)
 }
 
 func (m *BasePeerMgr) handleRegReq(pack *Pack, peer *Peer) {
@@ -487,7 +487,7 @@ func (m *BasePeerMgr) handleRegReq(pack *Pack, peer *Peer) {
 
 	respPack := peer.CreatePack()
 	respPack.Header.SetRegisterRespPack()
-	go peer.PushWritePack(respPack)
+	peer.PushWritePack(respPack)
 }
 
 func (m *BasePeerMgr) addKnownPeer(peer *Peer, peerType uint32, peerNo uint32) bool {
