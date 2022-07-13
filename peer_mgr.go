@@ -46,6 +46,8 @@ func NewPackWrap(pack *Pack, directPeerType uint32, directPeerNo uint32) *PackWr
 //       PeerMgr
 //========================
 type PeerMgr interface {
+	AddTopPriorityListener(l P2pNetListener)
+	RemoveTopPriorityListener(l P2pNetListener)
 	AddListener(l P2pNetListener)
 	RemoveListener(l P2pNetListener)
 	Start()
