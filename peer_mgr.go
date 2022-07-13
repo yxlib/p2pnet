@@ -380,7 +380,7 @@ Exit0:
 }
 
 func (m *BasePeerMgr) handleReadPacks() {
-	if m.getListenerCnt() == 0 {
+	if m.getListenerCnt() == 0 && m.getTopPriorityListenerCnt() == 0 {
 		return
 	}
 
