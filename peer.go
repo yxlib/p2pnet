@@ -23,6 +23,7 @@ var (
 	ErrPeerMarkErr          = errors.New("mark error")
 	ErrPeerReadPackTooBig   = errors.New("package too big")
 	ErrPeerClose            = errors.New("peer close")
+	ErrPeerEmptyPack        = errors.New("empty pack")
 )
 
 const (
@@ -76,6 +77,7 @@ type Peer struct {
 	packPool    *PackPool
 	buffFactory *yx.BuffFactory
 	// headerFactory PackHeaderFactory
+	bSingleBuffPack bool
 
 	maxPayload     int
 	wantReadLen    int
@@ -111,6 +113,8 @@ func NewPeer(peerType uint32, peerNo uint32, c net.Conn, maxReadQue uint32, maxW
 		packPool:    nil,
 		buffFactory: nil,
 		// headerFactory: nil,
+		bSingleBuffPack: false,
+
 		maxPayload:     PACK_MAX_PAYLOAD,
 		wantReadLen:    0,
 		readBuff:       yx.NewSimpleBuffer(PEER_READ_BUFF_SIZE),
@@ -181,6 +185,10 @@ func (p *Peer) GetPeerNo() uint32 {
 
 func (p *Peer) GetIpAddr() string {
 	return p.ipAddr
+}
+
+func (p *Peer) SetSingleBuffPack() {
+	p.bSingleBuffPack = true
 }
 
 func (p *Peer) SetMaxPayload(maxPayload int) {
@@ -622,12 +630,23 @@ func (p *Peer) writePack(pack *Pack) error {
 	var err error = nil
 	defer p.ec.DeferThrow("writePack", &err)
 
-	buff, err := pack.Header.Marshal()
+	header, err := pack.Header.Marshal()
 	if err != nil {
 		return err
 	}
 
-	err = p.writeBytes(buff)
+	if p.bSingleBuffPack {
+		var buff []byte = nil
+		buff, err = p.toOneBuffer(header, pack.Payload)
+		if err != nil {
+			return err
+		}
+
+		err = p.writeBytes(buff)
+		return err
+	}
+
+	err = p.writeBytes(header)
 	if err != nil {
 		return err
 	}
@@ -645,6 +664,43 @@ func (p *Peer) writePack(pack *Pack) error {
 	}
 
 	return nil
+}
+
+func (p *Peer) toOneBuffer(header []byte, frames []PackFrame) ([]byte, error) {
+	if len(frames) == 0 {
+		if len(header) == 0 {
+			return nil, ErrPeerEmptyPack
+		}
+
+		return header, nil
+	}
+
+	headerLen := len(header)
+	dataLen := headerLen
+	for _, frame := range frames {
+		dataLen += len(frame)
+	}
+
+	if dataLen == 0 {
+		return nil, ErrPeerEmptyPack
+	}
+
+	buff := make([]byte, dataLen)
+	offset := 0
+	if headerLen > 0 {
+		copy(buff, header)
+		offset += headerLen
+	}
+
+	for _, frame := range frames {
+		frameLen := len(frame)
+		if frameLen > 0 {
+			copy(buff[offset:], frame)
+			offset += frameLen
+		}
+	}
+
+	return buff, nil
 }
 
 func (p *Peer) writeBytes(b []byte) error {
