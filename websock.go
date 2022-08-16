@@ -5,6 +5,7 @@
 package p2pnet
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"time"
@@ -119,12 +120,18 @@ func (c *WebSockConn) readFromBuff(b []byte) (n int, err error) {
 type WebSockServ struct {
 	*BaseServer
 	upgrader *websocket.Upgrader
+
+	httpSrv     *http.Server
+	evtShutdown *yx.Event
 }
 
 func NewWebSockServ(peerMgr PeerMgr, ipConnCntLimit uint32, headerFactory PackHeaderFactory, maxReadQue uint32, maxWriteQue uint32) *WebSockServ {
 	return &WebSockServ{
 		BaseServer: NewBaseServ(peerMgr, ipConnCntLimit, headerFactory, maxReadQue, maxWriteQue),
 		upgrader:   nil,
+
+		httpSrv:     nil,
+		evtShutdown: yx.NewEvent(),
 	}
 }
 
@@ -137,7 +144,7 @@ var DefaultWsUpgrader = &websocket.Upgrader{
 }
 
 func (s *WebSockServ) Init(pattern string, upgrader *websocket.Upgrader) {
-	http.HandleFunc(pattern, s.serveHttp)
+	// http.HandleFunc(pattern, s.serveHttp)
 
 	s.upgrader = upgrader
 	if s.upgrader == nil {
@@ -146,15 +153,43 @@ func (s *WebSockServ) Init(pattern string, upgrader *websocket.Upgrader) {
 }
 
 func (s *WebSockServ) Listen(network string, address string) error {
-	err := http.ListenAndServe(address, nil)
-	if err != nil {
-		return s.ec.Throw("Listen", err)
+	// err := http.ListenAndServe(address, nil)
+	// if err != nil {
+	// 	return s.ec.Throw("Listen", err)
+	// }
+
+	// return nil
+
+	s.httpSrv = &http.Server{
+		Addr:    address,
+		Handler: s,
 	}
 
+	err := s.httpSrv.ListenAndServe()
+	if err != nil {
+		if err != http.ErrServerClosed {
+			return err
+		}
+	}
+
+	s.evtShutdown.Wait()
 	return nil
 }
 
-func (s *WebSockServ) serveHttp(w http.ResponseWriter, r *http.Request) {
+func (s *WebSockServ) Close() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := s.httpSrv.Shutdown(ctx)
+	if err != nil {
+		return err
+	}
+
+	s.evtShutdown.Send()
+	return nil
+}
+
+func (s *WebSockServ) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ws, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		s.ec.Catch("serveHttp", &err)
