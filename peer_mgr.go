@@ -57,6 +57,7 @@ type PeerMgr interface {
 	GetPeerId(peerType uint32, peerNo uint32) uint32
 	GetPeer(peerType uint32, peerNo uint32) (*Peer, bool)
 	IsPeerExist(peerType uint32, peerNo uint32) bool
+	SwapPeer(peerType1 uint32, peerNo1 uint32, peerType2 uint32, peerNo2 uint32)
 	Send(pack *Pack) error
 	SendByPeer(pack *Pack, nextPeerType uint32, nextPeerNo uint32) error
 	CloseRead(peerType uint32, peerNo uint32)
@@ -232,6 +233,16 @@ func (m *BasePeerMgr) IsPeerExist(peerType uint32, peerNo uint32) bool {
 	return ok
 }
 
+func (m *BasePeerMgr) SwapPeer(peerType1 uint32, peerNo1 uint32, peerType2 uint32, peerNo2 uint32) {
+	m.swapPeerImpl(peerType1, peerNo1, peerType2, peerNo2)
+
+	id := m.GetPeerId(peerType1, peerNo1)
+	m.recordReadById(id)
+
+	id = m.GetPeerId(peerType2, peerNo2)
+	m.recordReadById(id)
+}
+
 func (m *BasePeerMgr) Send(pack *Pack) error {
 	dstType, dstNo := pack.Header.GetDstPeer()
 	err := m.SendByPeer(pack, dstType, dstNo)
@@ -354,6 +365,13 @@ func (m *BasePeerMgr) recordRead(p *Peer) {
 	peerNo := p.GetPeerNo()
 	id := m.GetPeerId(peerType, peerNo)
 	m.readPeerIdSet[id] = true
+}
+
+func (m *BasePeerMgr) recordReadById(peerId uint32) {
+	m.lckReadPeerIds.Lock()
+	defer m.lckReadPeerIds.Unlock()
+
+	m.readPeerIdSet[peerId] = true
 }
 
 func (m *BasePeerMgr) popReadPeerIds() []uint32 {
@@ -653,6 +671,27 @@ func (m *BasePeerMgr) isUnknownPeer(p *Peer) bool {
 	}
 
 	return false
+}
+
+func (m *BasePeerMgr) swapPeerImpl(peerType1 uint32, peerNo1 uint32, peerType2 uint32, peerNo2 uint32) {
+	m.lckPeer.RLock()
+	defer m.lckPeer.RUnlock()
+
+	id1 := m.GetPeerId(peerType1, peerNo1)
+	peer1, ok1 := m.mapPeerId2Peer[id1]
+
+	id2 := m.GetPeerId(peerType2, peerNo2)
+	peer2, ok2 := m.mapPeerId2Peer[id2]
+
+	if ok1 {
+		peer1.SetPeerTypeAndNo(peerType2, peerNo2)
+		m.mapPeerId2Peer[id2] = peer1
+	}
+
+	if ok2 {
+		peer2.SetPeerTypeAndNo(peerType1, peerNo1)
+		m.mapPeerId2Peer[id1] = peer2
+	}
 }
 
 func (m *BasePeerMgr) closePeerImpl(p *Peer) {
