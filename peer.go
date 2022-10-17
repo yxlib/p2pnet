@@ -22,8 +22,10 @@ var (
 	ErrPeerReadStepErr      = errors.New("unknown read step")
 	ErrPeerMarkErr          = errors.New("mark error")
 	ErrPeerReadPackTooBig   = errors.New("package too big")
+	ErrPeerCloseRead        = errors.New("peer close read")
 	ErrPeerClose            = errors.New("peer close")
 	ErrPeerEmptyPack        = errors.New("empty pack")
+	ErrBadPeer              = errors.New("bad peer")
 )
 
 const (
@@ -33,7 +35,16 @@ const (
 )
 
 const (
-	PEER_READ_STEP_UNKNOWN = iota
+	PEER_STAT_OPEN uint8 = iota
+	PEER_STAT_CLOSE_READ
+	PEER_STAT_ERROR
+	PEER_STAT_CLOSE_WRITE
+	PEER_STAT_CLOSE_CONN
+	PEER_STAT_EXIT
+)
+
+const (
+	PEER_READ_STEP_UNKNOWN int = iota
 	PEER_READ_STEP_MARK
 	PEER_READ_STEP_HEADER
 	PEER_READ_STEP_DATA
@@ -64,14 +75,12 @@ type PeerListener interface {
 }
 
 type Peer struct {
-	peerType    uint32
-	peerNo      uint32
-	conn        net.Conn
-	ipAddr      string
-	bCloseRead  bool
-	bExit       bool
-	bForceClose bool
-	lckClose    *sync.Mutex
+	peerType uint32
+	peerNo   uint32
+	conn     net.Conn
+	ipAddr   string
+	stat     uint8
+	lckStat  *sync.RWMutex
 
 	mgr         PeerListener
 	packPool    *PackPool
@@ -105,10 +114,8 @@ func NewPeer(peerType uint32, peerNo uint32, c net.Conn, maxReadQue uint32, maxW
 		peerNo:      peerNo,
 		conn:        c,
 		ipAddr:      GetRemoteAddr(c),
-		bCloseRead:  false,
-		bExit:       false,
-		bForceClose: false,
-		lckClose:    &sync.Mutex{},
+		stat:        PEER_STAT_OPEN,
+		lckStat:     &sync.RWMutex{},
 		mgr:         nil,
 		packPool:    nil,
 		buffFactory: nil,
@@ -203,24 +210,26 @@ func (p *Peer) Open() {
 }
 
 func (p *Peer) CloseRead() {
-	p.bCloseRead = true
+	p.setStat(PEER_STAT_CLOSE_READ)
 }
 
 func (p *Peer) Close() {
-	p.lckClose.Lock()
-	defer p.lckClose.Unlock()
+	p.lckStat.Lock()
+	defer p.lckStat.Unlock()
 
-	if p.bForceClose {
-		return
-	}
+	p.closeWrite()
+}
 
-	p.bForceClose = true
-	p.bCloseRead = true
-	p.conn.Close()
+func (p *Peer) ForceClose() {
+	p.lckStat.Lock()
+	defer p.lckStat.Unlock()
+
+	p.closeWrite()
+	p.closeConn()
 }
 
 func (p *Peer) IsExit() bool {
-	return p.bExit
+	return p.getStat() == PEER_STAT_EXIT
 }
 
 func (p *Peer) PopReadPack() (*Pack, error) {
@@ -257,8 +266,7 @@ func (p *Peer) SetStatSendInfo() {
 
 func (p *Peer) CheckHealthy(cfg *HealtyCfg, startTimeNanosec int64, nowNanosec int64) {
 	if p.isBadPeer(cfg, startTimeNanosec, nowNanosec) {
-		p.logger.E("CheckHealthy: bad peer")
-		p.Close()
+		p.notifyError(ErrBadPeer)
 	}
 }
 
@@ -278,12 +286,15 @@ func (p *Peer) readLoop() {
 		p.mgr.OnPeerRead(p)
 	}
 
-	close(p.queReadPacks)
-	p.mgr.OnPeerError(p, err)
+	if p.getStat() == PEER_STAT_OPEN {
+		p.notifyError(err)
+	}
 
-	// wake up write loop and note to exit
-	close(p.chanCloseWrite)
-	// close(p.queWritePacks)
+	// close(p.queReadPacks)
+
+	// // wake up write loop and note to exit
+	// close(p.chanCloseWrite)
+	// // close(p.queWritePacks)
 
 	p.evtExitRead.Send()
 }
@@ -299,16 +310,19 @@ func (p *Peer) writeLoop() {
 		}
 	}
 
-	if err != nil {
-		p.mgr.OnPeerError(p, err)
+	// write error, cause force close later
+	if p.getStat() < PEER_STAT_ERROR && err != nil {
+		p.notifyError(err)
+	} else { // wake up read loop and note to exit at once
+		p.closeConnInner()
+		// p.Close()
 	}
 
-	// wake up read loop and note to exit
-	p.Close()
 	p.evtExitRead.Wait()
 
 	p.mgr.OnPeerClose(p)
-	p.bExit = true
+	p.setStat(PEER_STAT_EXIT)
+	// p.bExit = true
 }
 
 func (p *Peer) selectOneWritePack() (bool, error) {
@@ -604,8 +618,14 @@ func (p *Peer) readBytes(buff []byte) (int, error) {
 	var err error = nil
 	defer p.ec.DeferThrow("readBytes", &err)
 
-	if p.bCloseRead {
-		err = ErrPeerClose
+	stat := p.getStat()
+	if stat != PEER_STAT_OPEN {
+		if stat == PEER_STAT_CLOSE_READ {
+			err = ErrPeerCloseRead
+		} else {
+			err = ErrPeerClose
+		}
+
 		return 0, err
 	}
 
@@ -784,4 +804,62 @@ func (p *Peer) isBadPeer(cfg *HealtyCfg, startTimeNanosec int64, nowNanosec int6
 	p.sendCnt = 0
 	p.sendSize = 0
 	return false
+}
+
+func (p *Peer) setStat(stat uint8) {
+	p.lckStat.Lock()
+	defer p.lckStat.Unlock()
+
+	if p.stat < stat {
+		p.stat = stat
+	}
+}
+
+func (p *Peer) getStat() uint8 {
+	p.lckStat.RLock()
+	defer p.lckStat.RUnlock()
+
+	return p.stat
+}
+
+func (p *Peer) notifyError(err error) {
+	p.lckStat.Lock()
+	defer p.lckStat.Unlock()
+
+	if p.stat >= PEER_STAT_ERROR {
+		return
+	}
+
+	p.stat = PEER_STAT_ERROR
+	p.mgr.OnPeerError(p, err)
+}
+
+func (p *Peer) closeConnInner() {
+	p.lckStat.Lock()
+	defer p.lckStat.Unlock()
+
+	p.closeConn()
+}
+
+func (p *Peer) closeWrite() {
+	if p.stat >= PEER_STAT_CLOSE_WRITE {
+		return
+	}
+
+	p.stat = PEER_STAT_CLOSE_WRITE
+
+	close(p.queReadPacks)
+
+	// wake up write loop and note to exit
+	close(p.chanCloseWrite)
+	// close(p.queWritePacks)
+}
+
+func (p *Peer) closeConn() {
+	if p.stat >= PEER_STAT_CLOSE_CONN {
+		return
+	}
+
+	p.stat = PEER_STAT_CLOSE_CONN
+	p.conn.Close()
 }

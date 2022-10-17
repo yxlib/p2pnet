@@ -23,6 +23,7 @@ const (
 	PEER_MGR_READ_WAIT_DURATION   = 5 * time.Millisecond
 	PEER_MGR_CHECK_CLOSE_INTERVAL = time.Second
 	PEER_MGR_MAX_PEER_NO          = 100000
+	PEER_MGR_MAX_CLOSE_PEER_LIST  = 100
 )
 
 //========================
@@ -74,6 +75,9 @@ type BasePeerMgr struct {
 	unknownPeers   []*Peer
 	closedPeers    []*Peer
 
+	chanBadPeer         chan *Peer
+	chanActiveClosePeer chan *Peer
+
 	topPriorityListeners []P2pNetListener
 	listeners            []P2pNetListener
 	lckListeners         *sync.RWMutex
@@ -99,6 +103,8 @@ func NewBasePeerMgr(peerType uint32, peerNo uint32) *BasePeerMgr {
 		mapPeerId2Peer:       make(map[uint32]*Peer),
 		unknownPeers:         make([]*Peer, 0),
 		closedPeers:          make([]*Peer, 0),
+		chanBadPeer:          make(chan *Peer, PEER_MGR_MAX_CLOSE_PEER_LIST),
+		chanActiveClosePeer:  make(chan *Peer, PEER_MGR_MAX_CLOSE_PEER_LIST),
 		topPriorityListeners: make([]P2pNetListener, 0),
 		listeners:            make([]P2pNetListener, 0),
 		lckListeners:         &sync.RWMutex{},
@@ -262,7 +268,8 @@ func (m *BasePeerMgr) ClosePeer(peerType uint32, peerNo uint32) {
 	peer, ok := m.getPeerImpl(peerType, peerNo)
 	if ok {
 		m.logger.W("ClosePeer")
-		peer.Close()
+		m.addActiveClosePeer(peer)
+		// peer.Close()
 	}
 }
 
@@ -285,6 +292,7 @@ func (m *BasePeerMgr) GetOwnerNo() uint32 {
 }
 
 func (m *BasePeerMgr) OnPeerError(p *Peer, err error) {
+	m.addBadPeer(p)
 	m.notifyPeerError(p, err)
 }
 
@@ -325,14 +333,16 @@ func (m *BasePeerMgr) handleUnknownPeerRead(p *Peer) {
 
 	if pack.Header.IsDataPack() {
 		m.logger.E("unknown peer receive a data pack")
-		p.Close()
+		// p.Close()
+		m.addBadPeer(p)
 		return
 	}
 
 	err = m.handleCtrlPack(pack, p, true)
 	if err != nil {
 		m.logger.E("unknown peer handle control package err: ", err)
-		p.Close()
+		// p.Close()
+		m.addBadPeer(p)
 	}
 }
 
@@ -365,11 +375,33 @@ func (m *BasePeerMgr) popReadPeerIds() []uint32 {
 	return ids
 }
 
+func (m *BasePeerMgr) addBadPeer(peer *Peer) {
+	if peer == nil {
+		return
+	}
+
+	m.chanBadPeer <- peer
+}
+
+func (m *BasePeerMgr) addActiveClosePeer(peer *Peer) {
+	if peer == nil {
+		return
+	}
+
+	m.chanActiveClosePeer <- peer
+}
+
 func (m *BasePeerMgr) loop() {
 	for {
 		select {
 		case <-m.evtStop.C:
 			goto Exit0
+
+		case p := <-m.chanBadPeer:
+			p.ForceClose()
+
+		case p := <-m.chanActiveClosePeer:
+			p.Close()
 
 		default:
 			m.cleanClosedPeers()
@@ -435,7 +467,8 @@ func (m *BasePeerMgr) loopReadPack(peers []*Peer) ([]*PackWrap, []*Peer) {
 			err = m.handleCtrlPack(pack, peer, false)
 			if err != nil {
 				m.logger.E("known peer handle control package err: ", err)
-				peer.Close()
+				// peer.Close()
+				m.addBadPeer(peer)
 				continue
 			}
 
@@ -533,7 +566,8 @@ func (m *BasePeerMgr) addKnownPeer(peer *Peer, peerType uint32, peerNo uint32) b
 		}
 
 		m.logger.E("add known peer close old peer (", peerType, ", ", peerNo, ")")
-		oldPeer.Close()
+		m.addActiveClosePeer(oldPeer)
+		// oldPeer.Close()
 	}
 
 	m.mapPeerId2Peer[id] = peer
@@ -577,7 +611,8 @@ func (m *BasePeerMgr) bindPeerImpl(peer *Peer) {
 	oldPeer, ok := m.mapPeerId2Peer[id]
 	if ok && (oldPeer != peer) {
 		m.logger.E("bind peer close old peer (", peer.peerType, ", ", peer.peerNo, ")")
-		oldPeer.Close()
+		m.addActiveClosePeer(oldPeer)
+		// oldPeer.Close()
 	}
 
 	m.mapPeerId2Peer[id] = peer
