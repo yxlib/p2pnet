@@ -803,43 +803,40 @@ func (m *BasePeerMgr) getListenerCnt() int {
 }
 
 func (m *BasePeerMgr) notifyPeerOpen(peerType uint32, peerNo uint32) {
-	m.lckListeners.RLock()
-	defer m.lckListeners.RUnlock()
+	topPriorityListeners, listeners := m.cloneListeners()
 
-	for _, l := range m.topPriorityListeners {
+	for _, l := range topPriorityListeners {
 		l.OnP2pNetOpenPeer(m, peerType, peerNo)
 	}
 
-	for _, l := range m.listeners {
+	for _, l := range listeners {
 		l.OnP2pNetOpenPeer(m, peerType, peerNo)
 	}
 }
 
 func (m *BasePeerMgr) notifyPeerClose(peerType uint32, peerNo uint32, ipAddr string) {
-	m.lckListeners.RLock()
-	defer m.lckListeners.RUnlock()
+	topPriorityListeners, listeners := m.cloneListeners()
 
-	for _, l := range m.topPriorityListeners {
+	for _, l := range topPriorityListeners {
 		l.OnP2pNetClosePeer(m, peerType, peerNo, ipAddr)
 	}
 
-	for _, l := range m.listeners {
+	for _, l := range listeners {
 		l.OnP2pNetClosePeer(m, peerType, peerNo, ipAddr)
 	}
 }
 
 func (m *BasePeerMgr) notifyPeerRead(pack *Pack, recvPeerType uint32, recvPeerNo uint32) {
-	m.lckListeners.RLock()
-	defer m.lckListeners.RUnlock()
+	topPriorityListeners, listeners := m.cloneListeners()
 
-	for _, l := range m.topPriorityListeners {
+	for _, l := range topPriorityListeners {
 		bHandle := l.OnP2pNetReadPack(m, pack, recvPeerType, recvPeerNo)
 		if bHandle {
 			return
 		}
 	}
 
-	for _, l := range m.listeners {
+	for _, l := range listeners {
 		bHandle := l.OnP2pNetReadPack(m, pack, recvPeerType, recvPeerNo)
 		if bHandle {
 			break
@@ -848,14 +845,26 @@ func (m *BasePeerMgr) notifyPeerRead(pack *Pack, recvPeerType uint32, recvPeerNo
 }
 
 func (m *BasePeerMgr) notifyPeerError(p *Peer, err error) {
+	topPriorityListeners, listeners := m.cloneListeners()
+
+	for _, l := range topPriorityListeners {
+		l.OnP2pNetError(m, p.GetPeerType(), p.GetPeerNo(), err)
+	}
+
+	for _, l := range listeners {
+		l.OnP2pNetError(m, p.GetPeerType(), p.GetPeerNo(), err)
+	}
+}
+
+func (m *BasePeerMgr) cloneListeners() (topPriorityListeners []P2pNetListener, listeners []P2pNetListener) {
 	m.lckListeners.RLock()
 	defer m.lckListeners.RUnlock()
 
-	for _, l := range m.topPriorityListeners {
-		l.OnP2pNetError(m, p.GetPeerType(), p.GetPeerNo(), err)
-	}
+	topPriorityListeners = make([]P2pNetListener, len(m.topPriorityListeners))
+	copy(topPriorityListeners, m.topPriorityListeners)
 
-	for _, l := range m.listeners {
-		l.OnP2pNetError(m, p.GetPeerType(), p.GetPeerNo(), err)
-	}
+	listeners = make([]P2pNetListener, len(m.listeners))
+	copy(listeners, m.listeners)
+
+	return topPriorityListeners, listeners
 }
