@@ -254,7 +254,7 @@ func (p *Pack) AddReuseFrame(oriBuff []byte, frameSize uint) error {
 	return nil
 }
 
-func (p *Pack) AddFrames(frames []PackFrame) error {
+func (p *Pack) AddFrames(frames ...PackFrame) error {
 	for _, frame := range frames {
 		err := p.AddFrame(frame)
 		if err != nil {
