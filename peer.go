@@ -823,15 +823,21 @@ func (p *Peer) getStat() uint8 {
 }
 
 func (p *Peer) notifyError(err error) {
+	if p.needNotifyError() {
+		p.mgr.OnPeerError(p, err)
+	}
+}
+
+func (p *Peer) needNotifyError() bool {
 	p.lckStat.Lock()
 	defer p.lckStat.Unlock()
 
 	if p.stat >= PEER_STAT_ERROR {
-		return
+		return false
 	}
 
 	p.stat = PEER_STAT_ERROR
-	p.mgr.OnPeerError(p, err)
+	return true
 }
 
 func (p *Peer) closeConnInner() {
