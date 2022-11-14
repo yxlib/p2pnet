@@ -237,12 +237,15 @@ func (p *Peer) PopReadPack() (*Pack, error) {
 		return nil, p.ec.Throw("PopReadPack", ErrPeerReadQueEmpty)
 	}
 
-	pack, ok := <-p.queReadPacks
-	if !ok {
-		return nil, p.ec.Throw("PopReadPack", ErrPeerReadQueClose)
+	select {
+	case <-p.chanCloseWrite:
+		return nil, p.ec.Throw("PopReadPack", ErrPeerClose)
+	case pack, ok := <-p.queReadPacks:
+		if !ok {
+			return nil, p.ec.Throw("PopReadPack", ErrPeerReadQueClose)
+		}
+		return pack, nil
 	}
-
-	return pack, nil
 }
 
 func (p *Peer) PushWritePack(pack *Pack) error {
@@ -854,7 +857,7 @@ func (p *Peer) closeWrite() {
 
 	p.stat = PEER_STAT_CLOSE_WRITE
 
-	close(p.queReadPacks)
+	// close(p.queReadPacks)
 
 	// wake up write loop and note to exit
 	close(p.chanCloseWrite)
